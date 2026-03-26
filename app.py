@@ -2,12 +2,13 @@
 日本株スクリーニング Web アプリ
 Flask + yfinance + Plotly
 JPX上場銘柄一覧から自動取得 → 2段階スクリーニング
+バックグラウンドジョブ + ポーリング (Render 30秒タイムアウト対策)
 """
 
 import io
 import json
-import re
-import time
+import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
@@ -18,7 +19,7 @@ import plotly.graph_objects as go
 import requests as http_requests
 from plotly.subplots import make_subplots
 import yfinance as yf
-from flask import Flask, Response, jsonify, render_template
+from flask import Flask, jsonify, render_template
 
 app = Flask(__name__)
 
@@ -34,34 +35,73 @@ MA_DEVIATION_THRESHOLD = 5.0
 ANOMALY_SIGMA = 2.0
 LOOKBACK_DAYS = 60
 
-# 一方的下落の設定
 SELLOFF_VOLATILITY_MULT = 1.5
 SELLOFF_BOUNCE_RATIO = 0.30
 SELLOFF_TAIL_BARS = 5
 
-# JPX 銘柄名キャッシュ (code -> name)
+# JPX 銘柄名キャッシュ
 _jpx_names: dict[str, str] = {}
+
+# ── ジョブ管理 ─────────────────────────────────────
+# job_id -> { status, total, processed, hits, results[], error? }
+_jobs: dict[str, dict] = {}
+_jobs_lock = threading.Lock()
+
+
+def _new_job() -> str:
+    job_id = uuid.uuid4().hex[:12]
+    with _jobs_lock:
+        _jobs[job_id] = {
+            "status": "starting",  # starting -> running -> done | error
+            "message": "JPX銘柄一覧を取得中...",
+            "total": 0,
+            "processed": 0,
+            "hits": 0,
+            "results": [],
+            "cursor": 0,  # フロントが最後に取得した results のインデックス
+        }
+    return job_id
+
+
+def _get_job(job_id: str) -> dict | None:
+    with _jobs_lock:
+        return _jobs.get(job_id)
+
+
+def _update_job(job_id: str, **kwargs):
+    with _jobs_lock:
+        if job_id in _jobs:
+            _jobs[job_id].update(kwargs)
+
+
+def _append_result(job_id: str, result: dict):
+    with _jobs_lock:
+        if job_id in _jobs:
+            _jobs[job_id]["results"].append(result)
+            _jobs[job_id]["hits"] = len(_jobs[job_id]["results"])
+
+
+def _increment_processed(job_id: str):
+    with _jobs_lock:
+        if job_id in _jobs:
+            _jobs[job_id]["processed"] += 1
 
 
 # ── JPX 銘柄一覧取得 ──────────────────────────────
 def fetch_jpx_tickers() -> list[str]:
-    """JPX上場銘柄Excelをダウンロードし、株式銘柄コード一覧を返す"""
     global _jpx_names
     r = http_requests.get(JPX_URL, timeout=30)
     r.raise_for_status()
 
     df = pd.read_excel(io.BytesIO(r.content), engine="xlrd")
-    # 位置ベースでカラム割り当て (エンコーディング問題を回避)
     df.columns = [
         "date", "code", "name", "market",
         "sec33_code", "sec33", "sec17_code", "sec17",
         "scale_code", "scale",
     ]
 
-    # ETF / REIT / PRO Market / 出資証券 を除外
     stocks = df[~df["market"].str.contains("ETF|REIT|PRO", na=False)].copy()
 
-    # コードを文字列に統一し .T を付与
     tickers = []
     for _, row in stocks.iterrows():
         code = str(row["code"]).strip()
@@ -75,7 +115,6 @@ def fetch_jpx_tickers() -> list[str]:
 
 
 def get_ticker_name(ticker: str) -> str:
-    """キャッシュ済みJPX名 → yfinance の順で名前を取得"""
     if ticker in _jpx_names and _jpx_names[ticker] != "-":
         return _jpx_names[ticker]
     try:
@@ -85,13 +124,11 @@ def get_ticker_name(ticker: str) -> str:
         return ticker
 
 
-# ── ステップ① 1銘柄の日足スクリーニング ────────────
+# ── 1銘柄の日足スクリーニング ──────────────────────
 def screen_worker(ticker: str) -> dict | None:
-    """1銘柄を処理: 時価総額フィルタ → 日足データ取得 → 条件判定"""
     try:
         tk = yf.Ticker(ticker)
 
-        # 時価総額チェック
         try:
             mcap = tk.fast_info.get("marketCap", 0)
         except Exception:
@@ -99,7 +136,6 @@ def screen_worker(ticker: str) -> dict | None:
         if not mcap or mcap < MIN_MARKET_CAP:
             return None
 
-        # 日足データ取得
         end = datetime.now()
         start = end - timedelta(days=LOOKBACK_DAYS)
         df = tk.history(start=start, end=end, auto_adjust=True)
@@ -125,7 +161,6 @@ def screen_worker(ticker: str) -> dict | None:
 
         alerts = []
 
-        # 1) 前日比
         if abs(change_pct) >= DAILY_CHANGE_THRESHOLD:
             tag = "急騰" if change_pct > 0 else "急落"
             alerts.append({
@@ -133,7 +168,6 @@ def screen_worker(ticker: str) -> dict | None:
                 "type": "up" if change_pct > 0 else "down",
             })
 
-        # 2) 年初来高値/安値圏
         if ytd_high > 0:
             d = (ytd_high - current) / ytd_high * 100
             if d <= NEAR_EXTREME_PCT:
@@ -143,14 +177,12 @@ def screen_worker(ticker: str) -> dict | None:
             if d <= NEAR_EXTREME_PCT:
                 alerts.append({"text": f"安値圏 (安値比 +{d:.1f}%)", "type": "down"})
 
-        # 3) MA乖離
         if abs(ma_dev) >= MA_DEVIATION_THRESHOLD:
             alerts.append({
                 "text": f"MA{MA_PERIOD}乖離 {ma_dev:+.1f}%",
                 "type": "up" if ma_dev > 0 else "down",
             })
 
-        # 4) 統計的異常値
         if std_30d > 0 and abs(change_pct) >= std_30d * ANOMALY_SIGMA:
             alerts.append({
                 "text": f"統計異常 ({change_pct:+.1f}% / 2σ={std_30d * ANOMALY_SIGMA:.1f}%)",
@@ -160,7 +192,7 @@ def screen_worker(ticker: str) -> dict | None:
         if not alerts:
             return None
 
-        mcap_b = mcap / 1e8  # 億円
+        mcap_b = mcap / 1e8
         name = get_ticker_name(ticker)
 
         return {
@@ -176,9 +208,31 @@ def screen_worker(ticker: str) -> dict | None:
         return None
 
 
+# ── バックグラウンドスクリーニング処理 ────────────
+def _run_screening(job_id: str):
+    try:
+        tickers = fetch_jpx_tickers()
+    except Exception as e:
+        _update_job(job_id, status="error", message=f"JPX一覧の取得に失敗: {e}")
+        return
+
+    total = len(tickers)
+    _update_job(job_id, status="running", total=total, processed=0, message="スクリーニング中...")
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(screen_worker, t): t for t in tickers}
+
+        for future in as_completed(futures):
+            result = future.result()
+            _increment_processed(job_id)
+            if result:
+                _append_result(job_id, result)
+
+    _update_job(job_id, status="done", message="完了")
+
+
 # ── 一方的下落の検知 ──────────────────────────────
 def detect_selloff(ticker: str) -> dict | None:
-    """5分足データで一方的な下落を検知。"""
     try:
         tk = yf.Ticker(ticker)
         df5 = tk.history(period="1d", interval="5m", auto_adjust=True)
@@ -295,7 +349,6 @@ def build_chart_json(ticker: str) -> str | None:
         showlegend=False,
     ), row=2, col=1)
 
-    # 一方的下落の区間ハイライト
     selloff = detect_selloff(ticker)
     shapes = []
     if selloff:
@@ -341,57 +394,40 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/api/screen")
-def api_screen():
-    """SSE ストリーム: JPX銘柄を並列スクリーニングし、進捗と結果を逐次配信"""
+@app.route("/api/screen/start", methods=["POST"])
+def api_screen_start():
+    """スクリーニングをバックグラウンドで開始し、job_id を返す"""
+    job_id = _new_job()
+    t = threading.Thread(target=_run_screening, args=(job_id,), daemon=True)
+    t.start()
+    return jsonify({"ok": True, "job_id": job_id})
 
-    def generate():
-        # ステップ0: JPX銘柄一覧取得
-        yield _sse({"type": "status", "message": "JPX銘柄一覧を取得中..."})
-        try:
-            tickers = fetch_jpx_tickers()
-        except Exception as e:
-            yield _sse({"type": "error", "message": f"JPX一覧の取得に失敗: {e}"})
-            return
 
-        total = len(tickers)
-        yield _sse({"type": "start", "total": total})
+@app.route("/api/screen/poll/<job_id>")
+def api_screen_poll(job_id):
+    """進捗と新しい結果を返す (cursor ベースの差分配信)"""
+    job = _get_job(job_id)
+    if job is None:
+        return jsonify({"ok": False, "error": "ジョブが見つかりません"}), 404
 
-        # ステップ①: 並列スクリーニング
-        processed = 0
-        hits = 0
+    # クエリパラメータで cursor を受け取る
+    from flask import request
+    cursor = int(request.args.get("cursor", 0))
 
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = {executor.submit(screen_worker, t): t for t in tickers}
+    with _jobs_lock:
+        new_results = job["results"][cursor:]
+        new_cursor = len(job["results"])
 
-            for future in as_completed(futures):
-                processed += 1
-                result = future.result()
-
-                if result:
-                    hits += 1
-                    yield _sse({
-                        "type": "hit",
-                        "result": result,
-                        "processed": processed,
-                        "total": total,
-                        "hits": hits,
-                    })
-                elif processed % 20 == 0 or processed == total:
-                    yield _sse({
-                        "type": "progress",
-                        "processed": processed,
-                        "total": total,
-                        "hits": hits,
-                    })
-
-        yield _sse({"type": "done", "processed": total, "hits": hits})
-
-    return Response(
-        generate(),
-        mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return jsonify({
+        "ok": True,
+        "status": job["status"],
+        "message": job.get("message", ""),
+        "total": job["total"],
+        "processed": job["processed"],
+        "hits": job["hits"],
+        "new_results": new_results,
+        "cursor": new_cursor,
+    })
 
 
 @app.route("/api/chart/<ticker>")
@@ -400,10 +436,6 @@ def api_chart(ticker):
     if chart_json is None:
         return jsonify({"ok": False, "error": "チャートデータを取得できませんでした"})
     return jsonify({"ok": True, "chart": json.loads(chart_json)})
-
-
-def _sse(data: dict) -> str:
-    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 if __name__ == "__main__":

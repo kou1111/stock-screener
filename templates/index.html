@@ -66,18 +66,20 @@
 </div>
 
 <script>
-const screenBtn   = document.getElementById("screen-btn");
-const statusBar   = document.getElementById("status-bar");
+const screenBtn    = document.getElementById("screen-btn");
+const statusBar    = document.getElementById("status-bar");
 const progressArea = document.getElementById("progress-area");
 const progressFill = document.getElementById("progress-fill");
 const progressText = document.getElementById("progress-text");
-const resultCard  = document.getElementById("result-card");
-const resultTbody = document.getElementById("result-tbody");
-const hitCount    = document.getElementById("hit-count");
-const chartArea   = document.getElementById("chart-area");
-const chartTitle  = document.getElementById("chart-title");
+const resultCard   = document.getElementById("result-card");
+const resultTbody  = document.getElementById("result-tbody");
+const hitCount     = document.getElementById("hit-count");
+const chartArea    = document.getElementById("chart-area");
+const chartTitle   = document.getElementById("chart-title");
 
-let evtSource = null;
+let pollTimer = null;
+let currentJobId = null;
+let currentCursor = 0;
 
 function setStatus(html) { statusBar.innerHTML = html; }
 
@@ -87,10 +89,15 @@ function updateProgress(processed, total, hits) {
   progressText.textContent = `処理中... ${processed.toLocaleString()} / ${total.toLocaleString()} 銘柄　(${hits} 件検知)`;
 }
 
-/* ── スクリーニング実行 (SSE) ──────────────────── */
-function runScreen() {
-  // 既存のストリームを閉じる
-  if (evtSource) { evtSource.close(); evtSource = null; }
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  currentJobId = null;
+  currentCursor = 0;
+}
+
+/* ── スクリーニング実行 ────────────────────────── */
+async function runScreen() {
+  stopPolling();
 
   screenBtn.disabled = true;
   screenBtn.textContent = "実行中...";
@@ -104,69 +111,89 @@ function runScreen() {
   progressText.textContent = "JPX銘柄一覧を取得中...";
   setStatus('<span class="spinner"></span> 初期化中...');
 
-  evtSource = new EventSource("/api/screen");
-
-  evtSource.onmessage = function(e) {
-    const d = JSON.parse(e.data);
-
-    switch (d.type) {
-      case "status":
-        progressText.textContent = d.message;
-        break;
-
-      case "start":
-        setStatus(`<span class="dot ok"></span> ${d.total.toLocaleString()} 銘柄を取得 — スクリーニング開始`);
-        updateProgress(0, d.total, 0);
-        break;
-
-      case "progress":
-        updateProgress(d.processed, d.total, d.hits);
-        break;
-
-      case "hit":
-        updateProgress(d.processed, d.total, d.hits);
-        resultCard.style.display = "block";
-        hitCount.textContent = `${d.hits} 件`;
-        appendRow(d.result);
-        break;
-
-      case "done":
-        evtSource.close();
-        evtSource = null;
-        screenBtn.disabled = false;
-        screenBtn.textContent = "スクリーニング実行";
-        progressFill.style.width = "100%";
-        progressText.textContent =
-          `完了 — ${d.processed.toLocaleString()} 銘柄処理 / ${d.hits} 件検知`;
-        setStatus(
-          `<span class="dot ok"></span> スクリーニング完了: ${d.hits} 件検知`
-        );
-        hitCount.textContent = `${d.hits} 件`;
-        if (d.hits === 0) {
-          resultCard.style.display = "block";
-          resultTbody.innerHTML =
-            '<tr><td colspan="6" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
-        }
-        break;
-
-      case "error":
-        evtSource.close();
-        evtSource = null;
-        screenBtn.disabled = false;
-        screenBtn.textContent = "スクリーニング実行";
-        progressArea.style.display = "none";
-        setStatus(`<span class="dot err"></span> ${d.message}`);
-        break;
+  try {
+    const res = await fetch("/api/screen/start", { method: "POST" });
+    const data = await res.json();
+    if (!data.ok) {
+      setStatus(`<span class="dot err"></span> ${data.error || "開始に失敗しました"}`);
+      screenBtn.disabled = false;
+      screenBtn.textContent = "スクリーニング実行";
+      return;
     }
-  };
 
-  evtSource.onerror = function() {
-    evtSource.close();
-    evtSource = null;
+    currentJobId = data.job_id;
+    currentCursor = 0;
+
+    // 1秒ごとにポーリング
+    pollTimer = setInterval(() => pollProgress(currentJobId), 1000);
+
+  } catch (e) {
+    setStatus(`<span class="dot err"></span> エラー: ${e.message}`);
     screenBtn.disabled = false;
     screenBtn.textContent = "スクリーニング実行";
-    setStatus('<span class="dot err"></span> 接続が切断されました');
-  };
+  }
+}
+
+/* ── ポーリング ────────────────────────────────── */
+async function pollProgress(jobId) {
+  if (jobId !== currentJobId) return;
+
+  try {
+    const res = await fetch(`/api/screen/poll/${jobId}?cursor=${currentCursor}`);
+    const d = await res.json();
+    if (!d.ok) {
+      stopPolling();
+      setStatus(`<span class="dot err"></span> ${d.error}`);
+      screenBtn.disabled = false;
+      screenBtn.textContent = "スクリーニング実行";
+      return;
+    }
+
+    // 進捗更新
+    if (d.total > 0) {
+      updateProgress(d.processed, d.total, d.hits);
+    } else {
+      progressText.textContent = d.message || "準備中...";
+    }
+
+    // 新しい結果があれば追加
+    if (d.new_results.length > 0) {
+      resultCard.style.display = "block";
+      hitCount.textContent = `${d.hits} 件`;
+      for (const r of d.new_results) {
+        appendRow(r);
+      }
+      currentCursor = d.cursor;
+    }
+
+    // 完了 or エラー
+    if (d.status === "done") {
+      stopPolling();
+      screenBtn.disabled = false;
+      screenBtn.textContent = "スクリーニング実行";
+      progressFill.style.width = "100%";
+      progressText.textContent =
+        `完了 — ${d.processed.toLocaleString()} 銘柄処理 / ${d.hits} 件検知`;
+      setStatus(
+        `<span class="dot ok"></span> スクリーニング完了: ${d.hits} 件検知`
+      );
+      hitCount.textContent = `${d.hits} 件`;
+      if (d.hits === 0) {
+        resultCard.style.display = "block";
+        resultTbody.innerHTML =
+          '<tr><td colspan="6" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
+      }
+    } else if (d.status === "error") {
+      stopPolling();
+      screenBtn.disabled = false;
+      screenBtn.textContent = "スクリーニング実行";
+      progressArea.style.display = "none";
+      setStatus(`<span class="dot err"></span> ${d.message}`);
+    }
+
+  } catch (e) {
+    // ネットワークエラーは無視して次回リトライ
+  }
 }
 
 /* ── 結果行の追加 ─────────────────────────────── */
