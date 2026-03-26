@@ -3,14 +3,18 @@
 Flask + yfinance + Plotly
 JPX上場銘柄一覧から自動取得 → 2段階スクリーニング
 バックグラウンドジョブ + ポーリング (Render 30秒タイムアウト対策)
+ジョブ状態はファイルに永続化 (インスタンス再起動対策)
 """
 
 import io
 import json
+import os
+import tempfile
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -42,49 +46,94 @@ SELLOFF_TAIL_BARS = 5
 # JPX 銘柄名キャッシュ
 _jpx_names: dict[str, str] = {}
 
-# ── ジョブ管理 ─────────────────────────────────────
-# job_id -> { status, total, processed, hits, results[], error? }
-_jobs: dict[str, dict] = {}
+# ── ファイルベース ジョブ管理 ──────────────────────
+JOBS_DIR = Path(tempfile.gettempdir()) / "stock_screener_jobs"
+JOBS_DIR.mkdir(exist_ok=True)
+
 _jobs_lock = threading.Lock()
+# インメモリキャッシュ (実行中のジョブのみ高速アクセス用)
+_jobs_mem: dict[str, dict] = {}
+
+
+def _job_path(job_id: str) -> Path:
+    # job_id は hex のみなので安全
+    return JOBS_DIR / f"{job_id}.json"
+
+
+def _save_job(job_id: str, data: dict):
+    """ジョブ状態をファイルに原子的に書き出す"""
+    path = _job_path(job_id)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)  # atomic on POSIX; best-effort on Windows
 
 
 def _new_job() -> str:
     job_id = uuid.uuid4().hex[:12]
+    data = {
+        "status": "starting",
+        "message": "JPX銘柄一覧を取得中...",
+        "total": 0,
+        "processed": 0,
+        "hits": 0,
+        "results": [],
+    }
     with _jobs_lock:
-        _jobs[job_id] = {
-            "status": "starting",  # starting -> running -> done | error
-            "message": "JPX銘柄一覧を取得中...",
-            "total": 0,
-            "processed": 0,
-            "hits": 0,
-            "results": [],
-            "cursor": 0,  # フロントが最後に取得した results のインデックス
-        }
+        _jobs_mem[job_id] = data
+    _save_job(job_id, data)
     return job_id
 
 
 def _get_job(job_id: str) -> dict | None:
+    """メモリ → ファイルの順でジョブを探す"""
     with _jobs_lock:
-        return _jobs.get(job_id)
+        if job_id in _jobs_mem:
+            return _jobs_mem[job_id]
+    # メモリに無い場合はファイルから復元 (再起動後)
+    path = _job_path(job_id)
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            # 実行中だったジョブはサーバー再起動で死んでいる
+            if data["status"] in ("starting", "running"):
+                data["status"] = "lost"
+                data["message"] = "サーバーが再起動されたためジョブが中断されました"
+                _save_job(job_id, data)
+            with _jobs_lock:
+                _jobs_mem[job_id] = data
+            return data
+        except (json.JSONDecodeError, KeyError):
+            return None
+    return None
 
 
 def _update_job(job_id: str, **kwargs):
     with _jobs_lock:
-        if job_id in _jobs:
-            _jobs[job_id].update(kwargs)
+        if job_id in _jobs_mem:
+            _jobs_mem[job_id].update(kwargs)
+            data = _jobs_mem[job_id]
+    _save_job(job_id, data)
 
 
 def _append_result(job_id: str, result: dict):
     with _jobs_lock:
-        if job_id in _jobs:
-            _jobs[job_id]["results"].append(result)
-            _jobs[job_id]["hits"] = len(_jobs[job_id]["results"])
+        if job_id in _jobs_mem:
+            _jobs_mem[job_id]["results"].append(result)
+            _jobs_mem[job_id]["hits"] = len(_jobs_mem[job_id]["results"])
 
 
 def _increment_processed(job_id: str):
     with _jobs_lock:
-        if job_id in _jobs:
-            _jobs[job_id]["processed"] += 1
+        if job_id in _jobs_mem:
+            _jobs_mem[job_id]["processed"] += 1
+
+
+def _flush_job(job_id: str):
+    """現在のメモリ状態をファイルに書き出す (重い処理中は間引いて呼ぶ)"""
+    with _jobs_lock:
+        if job_id in _jobs_mem:
+            data = _jobs_mem[job_id].copy()
+    _save_job(job_id, data)
 
 
 # ── JPX 銘柄一覧取得 ──────────────────────────────
@@ -222,11 +271,16 @@ def _run_screening(job_id: str):
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = {executor.submit(screen_worker, t): t for t in tickers}
 
+        count = 0
         for future in as_completed(futures):
             result = future.result()
             _increment_processed(job_id)
             if result:
                 _append_result(job_id, result)
+            count += 1
+            # 20銘柄ごとにファイルへ書き出し
+            if count % 20 == 0:
+                _flush_job(job_id)
 
     _update_job(job_id, status="done", message="完了")
 
