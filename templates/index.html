@@ -83,10 +83,11 @@ let currentCursor = 0;
 
 function setStatus(html) { statusBar.innerHTML = html; }
 
-function updateProgress(processed, total, hits) {
+function updateProgress(processed, total, hits, message) {
   const pct = total > 0 ? (processed / total * 100) : 0;
   progressFill.style.width = pct + "%";
-  progressText.textContent = `処理中... ${processed.toLocaleString()} / ${total.toLocaleString()} 銘柄　(${hits} 件検知)`;
+  const label = message || "処理中...";
+  progressText.textContent = `${label} ${processed.toLocaleString()} / ${total.toLocaleString()} 銘柄　(${hits} 件検知)`;
 }
 
 function stopPolling() {
@@ -155,7 +156,7 @@ async function pollProgress(jobId) {
 
     // 進捗更新
     if (d.total > 0) {
-      updateProgress(d.processed, d.total, d.hits);
+      updateProgress(d.processed, d.total, d.hits, d.message);
     } else {
       progressText.textContent = d.message || "準備中...";
     }

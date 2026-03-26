@@ -173,17 +173,21 @@ def get_ticker_name(ticker: str) -> str:
         return ticker
 
 
+# ── 時価総額の軽量プリフィルタ ─────────────────────
+def mcap_filter(ticker: str) -> tuple[str, float]:
+    """時価総額だけを返す軽量チェック (fast_info のみ)"""
+    try:
+        mcap = yf.Ticker(ticker).fast_info.get("marketCap", 0) or 0
+    except Exception:
+        mcap = 0
+    return (ticker, float(mcap))
+
+
 # ── 1銘柄の日足スクリーニング ──────────────────────
-def screen_worker(ticker: str) -> dict | None:
+def screen_worker(ticker_mcap: tuple[str, float]) -> dict | None:
+    ticker, mcap = ticker_mcap
     try:
         tk = yf.Ticker(ticker)
-
-        try:
-            mcap = tk.fast_info.get("marketCap", 0)
-        except Exception:
-            mcap = 0
-        if not mcap or mcap < MIN_MARKET_CAP:
-            return None
 
         end = datetime.now()
         start = end - timedelta(days=LOOKBACK_DAYS)
@@ -265,11 +269,34 @@ def _run_screening(job_id: str):
         _update_job(job_id, status="error", message=f"JPX一覧の取得に失敗: {e}")
         return
 
-    total = len(tickers)
-    _update_job(job_id, status="running", total=total, processed=0, message="スクリーニング中...")
+    # ── フェーズ1: 時価総額プリフィルタ ──
+    all_count = len(tickers)
+    _update_job(job_id, status="running", total=all_count, processed=0,
+                message="時価総額フィルタ中...")
+
+    qualified: list[tuple[str, float]] = []   # (ticker, mcap)
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(screen_worker, t): t for t in tickers}
+        futures = {executor.submit(mcap_filter, t): t for t in tickers}
+
+        count = 0
+        for future in as_completed(futures):
+            ticker, mcap = future.result()
+            if mcap >= MIN_MARKET_CAP:
+                qualified.append((ticker, mcap))
+            count += 1
+            _increment_processed(job_id)
+            if count % 50 == 0:
+                _update_job(job_id, message=f"時価総額フィルタ中... ({len(qualified)}銘柄該当)")
+                _flush_job(job_id)
+
+    # ── フェーズ2: 本スクリーニング ──
+    total = len(qualified)
+    _update_job(job_id, total=total, processed=0,
+                message=f"スクリーニング中... (対象 {total} 銘柄)")
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(screen_worker, tm): tm for tm in qualified}
 
         count = 0
         for future in as_completed(futures):
@@ -278,7 +305,6 @@ def _run_screening(job_id: str):
             if result:
                 _append_result(job_id, result)
             count += 1
-            # 20銘柄ごとにファイルへ書き出し
             if count % 20 == 0:
                 _flush_job(job_id)
 
