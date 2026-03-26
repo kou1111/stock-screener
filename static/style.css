@@ -217,8 +217,14 @@ header .badge {
   font-weight: 500;
   margin: 2px 4px 2px 0;
 }
-.alert-tag.up   { background: rgba(248, 81, 73, 0.15); color: var(--red); }
-.alert-tag.down { background: rgba(88, 166, 255, 0.15); color: var(--blue); }
+.alert-tag.up      { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+.alert-tag.down    { background: rgba(88, 166, 255, 0.15); color: var(--blue); }
+.alert-tag.selloff {
+  background: linear-gradient(135deg, rgba(248, 81, 73, 0.25), rgba(210, 153, 34, 0.18));
+  color: #ff6b6b;
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  font-weight: 600;
+}
 
 .empty-state {
   text-align: center;

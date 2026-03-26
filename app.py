@@ -28,6 +28,11 @@ MA_DEVIATION_THRESHOLD = 5.0
 ANOMALY_SIGMA = 2.0
 LOOKBACK_DAYS = 60
 
+# 一方的下落の設定
+SELLOFF_VOLATILITY_MULT = 1.5   # 日中変動σの倍数
+SELLOFF_BOUNCE_RATIO = 0.30     # 反発とみなす閾値（下落幅の30%）
+SELLOFF_TAIL_BARS = 5           # 直近N本が全て陰線/横ばい
+
 
 # ── 銘柄リスト管理 ─────────────────────────────────
 def load_tickers() -> list[str]:
@@ -124,6 +129,14 @@ def screen_one(ticker: str, df) -> dict | None:
             "type": "up" if change_pct > 0 else "down",
         })
 
+    # 5) 一方的な下落
+    selloff = detect_selloff(ticker)
+    if selloff:
+        alerts.append({
+            "text": f"一方的な下落 -{selloff['drop']:.1f}%",
+            "type": "selloff",
+        })
+
     if not alerts:
         return None
 
@@ -135,6 +148,71 @@ def screen_one(ticker: str, df) -> dict | None:
         "price": current,
         "change_pct": round(change_pct, 2),
         "alerts": alerts,
+    }
+
+
+# ── 一方的下落の検知 ──────────────────────────────
+def detect_selloff(ticker: str) -> dict | None:
+    """5分足データで一方的な下落を検知。該当すれば下落区間情報を返す。"""
+    tk = yf.Ticker(ticker)
+    df5 = tk.history(period="1d", interval="5m", auto_adjust=True)
+
+    if df5.empty:
+        df5 = tk.history(period="5d", interval="5m", auto_adjust=True)
+        if df5.empty:
+            return None
+        last_date = df5.index[-1].date()
+        df5 = df5[df5.index.date == last_date]
+
+    df5 = df5[["Open", "High", "Low", "Close"]].dropna()
+    if len(df5) < SELLOFF_TAIL_BARS + 1:
+        return None
+
+    highs = df5["High"].values.flatten()
+    closes = df5["Close"].values.flatten()
+    opens = df5["Open"].values.flatten()
+
+    day_high = float(np.max(highs))
+    current = float(closes[-1])
+    drop = day_high - current
+
+    if drop <= 0:
+        return None
+
+    # 過去30日の日中変動幅（High-Low）の標準偏差を取得
+    daily = tk.history(period="30d", interval="1d", auto_adjust=True)
+    if daily.empty or len(daily) < 5:
+        return None
+    intraday_ranges = (daily["High"] - daily["Low"]).values.flatten()
+    range_std = float(np.std(intraday_ranges))
+
+    if range_std <= 0:
+        return None
+
+    # 条件1: 高値からの下落 >= σ × 1.5
+    if drop < range_std * SELLOFF_VOLATILITY_MULT:
+        return None
+
+    # 高値をつけた足のインデックスを特定
+    peak_idx = int(np.argmax(highs))
+
+    # 条件2: 高値以降、反発らしい反発がない
+    for i in range(peak_idx + 1, len(df5)):
+        candle_up = float(closes[i]) - float(opens[i])
+        if candle_up > 0 and candle_up >= drop * SELLOFF_BOUNCE_RATIO:
+            return None
+
+    # 条件3: 直近5本が全て陰線 or 横ばい
+    for i in range(-SELLOFF_TAIL_BARS, 0):
+        if float(closes[i]) > float(opens[i]):
+            return None
+
+    # 全条件クリア: 下落区間の開始・終了インデックスを返す
+    drop_pct = drop / day_high * 100
+    return {
+        "drop": round(drop_pct, 1),
+        "peak_idx": peak_idx,
+        "end_idx": len(df5) - 1,
     }
 
 
@@ -203,6 +281,24 @@ def build_chart_json(ticker: str) -> str | None:
         showlegend=False,
     ), row=2, col=1)
 
+    # 一方的下落の区間ハイライト
+    selloff = detect_selloff(ticker)
+    shapes = []
+    if selloff:
+        s_idx = selloff["peak_idx"]
+        e_idx = selloff["end_idx"]
+        # category 軸なのでインデックス番号で指定
+        shapes.append(dict(
+            type="rect",
+            xref="x", yref="y",
+            x0=max(0, s_idx - 0.5), x1=min(len(df) - 1, e_idx + 0.5),
+            y0=float(df["Low"].iloc[s_idx:e_idx + 1].min()) * 0.999,
+            y1=float(df["High"].iloc[s_idx:e_idx + 1].max()) * 1.001,
+            fillcolor="rgba(248, 81, 73, 0.15)",
+            line=dict(color="rgba(248, 81, 73, 0.5)", width=1, dash="dot"),
+            layer="below",
+        ))
+
     fig.update_layout(
         title=dict(text=f"{ticker}  {name}  ({chart_date})", font=dict(size=16)),
         template="plotly_dark",
@@ -211,6 +307,7 @@ def build_chart_json(ticker: str) -> str | None:
         xaxis_rangeslider_visible=False,
         showlegend=True,
         legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center"),
+        shapes=shapes,
     )
     fig.update_xaxes(type="category", nticks=10, row=1, col=1)
     fig.update_xaxes(type="category", nticks=10, row=2, col=1)
