@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Screener</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body>
+<div class="container">
+
+  <!-- ヘッダー -->
+  <header>
+    <h1>Stock Screener</h1>
+    <span class="badge">JP</span>
+  </header>
+
+  <!-- 銘柄管理 -->
+  <div class="card">
+    <div class="card-title">監視銘柄</div>
+    <div class="ticker-area">
+      <textarea id="tickers-input" placeholder="7203.T&#10;6758.T&#10;9984.T">{{ tickers_text }}</textarea>
+      <div class="btn-group">
+        <button class="btn btn-secondary" onclick="saveTickers()">保存</button>
+        <button class="btn btn-primary" id="screen-btn" onclick="runScreen()">
+          スクリーニング実行
+        </button>
+      </div>
+    </div>
+    <div class="status-bar" id="status-bar"></div>
+  </div>
+
+  <!-- 結果テーブル -->
+  <div class="card" id="result-card" style="display:none;">
+    <div class="card-title">スクリーニング結果</div>
+    <div id="result-body"></div>
+  </div>
+
+  <!-- チャート -->
+  <div class="card" id="chart-area">
+    <div class="chart-header">
+      <div class="card-title" id="chart-title">チャート</div>
+      <button class="close-btn" onclick="closeChart()">閉じる</button>
+    </div>
+    <div id="plotly-chart"></div>
+  </div>
+
+</div>
+
+<script>
+const statusBar  = document.getElementById("status-bar");
+const resultCard = document.getElementById("result-card");
+const resultBody = document.getElementById("result-body");
+const chartArea  = document.getElementById("chart-area");
+const chartTitle = document.getElementById("chart-title");
+const screenBtn  = document.getElementById("screen-btn");
+
+function setStatus(html) { statusBar.innerHTML = html; }
+
+/* ── 銘柄保存 ─────────────────────────────────── */
+async function saveTickers() {
+  const text = document.getElementById("tickers-input").value;
+  const res  = await fetch("/api/save_tickers", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({tickers: text}),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    setStatus(`<span class="dot ok"></span> ${data.count} 銘柄を保存しました`);
+  }
+}
+
+/* ── スクリーニング実行 ────────────────────────── */
+async function runScreen() {
+  screenBtn.disabled = true;
+  screenBtn.textContent = "取得中...";
+  setStatus('<span class="spinner"></span> データを取得しています...');
+  resultCard.style.display = "none";
+  closeChart();
+
+  try {
+    const res  = await fetch("/api/screen", {method: "POST"});
+    const data = await res.json();
+
+    if (!data.ok) {
+      setStatus(`<span class="dot err"></span> ${data.error}`);
+      return;
+    }
+
+    setStatus(
+      `<span class="dot ok"></span> ${data.fetched}/${data.total} 銘柄取得完了 &mdash; ${data.results.length} 件検知`
+    );
+
+    renderResults(data.results);
+  } catch (e) {
+    setStatus(`<span class="dot err"></span> エラー: ${e.message}`);
+  } finally {
+    screenBtn.disabled = false;
+    screenBtn.textContent = "スクリーニング実行";
+  }
+}
+
+/* ── 結果描画 ──────────────────────────────────── */
+function renderResults(results) {
+  resultCard.style.display = "block";
+
+  if (results.length === 0) {
+    resultBody.innerHTML = '<div class="empty-state">条件に該当する銘柄はありませんでした</div>';
+    return;
+  }
+
+  let html = `<table class="result-table">
+    <thead><tr>
+      <th>銘柄</th><th>銘柄名</th><th style="text-align:right">現在値</th>
+      <th style="text-align:right">前日比</th><th>検知内容</th>
+    </tr></thead><tbody>`;
+
+  for (const r of results) {
+    const dir = r.change_pct >= 0 ? "up" : "down";
+    const sign = r.change_pct >= 0 ? "+" : "";
+    const alertsHtml = r.alerts.map(a =>
+      `<span class="alert-tag ${a.type}">${a.text}</span>`
+    ).join("");
+
+    html += `<tr>
+      <td><a class="ticker-link" onclick="showChart('${r.ticker}')">${r.ticker}</a></td>
+      <td>${r.name}</td>
+      <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
+      <td class="change ${dir}">${sign}${r.change_pct.toFixed(1)}%</td>
+      <td>${alertsHtml}</td>
+    </tr>`;
+  }
+
+  html += "</tbody></table>";
+  resultBody.innerHTML = html;
+}
+
+/* ── チャート ──────────────────────────────────── */
+async function showChart(ticker) {
+  chartArea.classList.add("visible");
+  chartTitle.textContent = `${ticker} チャート読込中...`;
+  document.getElementById("plotly-chart").innerHTML =
+    '<div style="text-align:center;padding:40px;color:#8b949e"><span class="spinner"></span></div>';
+
+  chartArea.scrollIntoView({behavior: "smooth", block: "start"});
+
+  try {
+    const res  = await fetch(`/api/chart/${ticker}`);
+    const data = await res.json();
+    if (!data.ok) {
+      chartTitle.textContent = `${ticker} - エラー`;
+      document.getElementById("plotly-chart").innerHTML =
+        `<div class="empty-state">${data.error}</div>`;
+      return;
+    }
+    chartTitle.textContent = `${ticker} 5分足チャート`;
+    Plotly.newPlot("plotly-chart", data.chart.data, data.chart.layout, {responsive: true});
+  } catch (e) {
+    chartTitle.textContent = `${ticker} - エラー`;
+    document.getElementById("plotly-chart").innerHTML =
+      `<div class="empty-state">${e.message}</div>`;
+  }
+}
+
+function closeChart() {
+  chartArea.classList.remove("visible");
+  Plotly.purge("plotly-chart");
+}
+</script>
+</body>
+</html>

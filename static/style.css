@@ -1,0 +1,265 @@
+/* ── リセット & ベース ─────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0d1117;
+  --surface:  #161b22;
+  --border:   #30363d;
+  --text:     #e6edf3;
+  --muted:    #8b949e;
+  --accent:   #58a6ff;
+  --red:      #f85149;
+  --blue:     #58a6ff;
+  --green:    #3fb950;
+  --orange:   #d29922;
+}
+
+body {
+  font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+/* ── レイアウト ────────────────────────────────── */
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 20px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 28px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+header .badge {
+  font-size: 11px;
+  background: var(--accent);
+  color: #000;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+/* ── カード共通 ────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+/* ── 銘柄管理エリア ────────────────────────────── */
+.ticker-area {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.ticker-area textarea {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: "Consolas", "Monaco", monospace;
+  font-size: 13px;
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 100px;
+  transition: border-color 0.2s;
+}
+
+.ticker-area textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── ボタン ────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--green);
+  color: #000;
+  border-color: var(--green);
+}
+.btn-primary:hover { filter: brightness(1.15); }
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: none;
+}
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--text);
+}
+.btn-secondary:hover { background: var(--border); }
+
+/* ── ステータス ────────────────────────────────── */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.status-bar .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.status-bar .dot.ok  { background: var(--green); }
+.status-bar .dot.err { background: var(--red); }
+
+.spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── 結果テーブル ──────────────────────────────── */
+.result-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.result-table th {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--border);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.result-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.result-table tr:last-child td {
+  border-bottom: none;
+}
+
+.result-table tr:hover {
+  background: rgba(88, 166, 255, 0.06);
+}
+
+.ticker-link {
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+  font-family: monospace;
+  text-decoration: none;
+}
+.ticker-link:hover { text-decoration: underline; }
+
+.price { font-family: monospace; text-align: right; }
+.change { font-family: monospace; text-align: right; font-weight: 600; }
+.change.up   { color: var(--red); }
+.change.down { color: var(--blue); }
+
+.alert-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  margin: 2px 4px 2px 0;
+}
+.alert-tag.up   { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+.alert-tag.down { background: rgba(88, 166, 255, 0.15); color: var(--blue); }
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+}
+
+/* ── チャートエリア ────────────────────────────── */
+#chart-area {
+  display: none;
+}
+#chart-area.visible {
+  display: block;
+}
+#chart-area .chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+#chart-area .close-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+#chart-area .close-btn:hover { color: var(--text); border-color: var(--muted); }
+
+#plotly-chart {
+  width: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* ── レスポンシブ ──────────────────────────────── */
+@media (max-width: 640px) {
+  .ticker-area { flex-direction: column; }
+  .btn-group { flex-direction: row; }
+  .result-table { font-size: 12px; }
+  .result-table th, .result-table td { padding: 8px 6px; }
+}
