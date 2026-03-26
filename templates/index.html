@@ -14,27 +14,44 @@
   <header>
     <h1>Stock Screener</h1>
     <span class="badge">JP</span>
+    <span class="badge badge-auto">JPX自動取得</span>
   </header>
 
-  <!-- 銘柄管理 -->
+  <!-- 実行パネル -->
   <div class="card">
-    <div class="card-title">監視銘柄</div>
-    <div class="ticker-area">
-      <textarea id="tickers-input" placeholder="7203.T&#10;6758.T&#10;9984.T">{{ tickers_text }}</textarea>
-      <div class="btn-group">
-        <button class="btn btn-secondary" onclick="saveTickers()">保存</button>
-        <button class="btn btn-primary" id="screen-btn" onclick="runScreen()">
-          スクリーニング実行
-        </button>
+    <div class="card-title">スクリーニング</div>
+    <p class="desc">JPX上場銘柄一覧から時価総額70億円以上の銘柄を自動取得し、4条件でスクリーニングします。</p>
+    <button class="btn btn-primary" id="screen-btn" onclick="runScreen()">
+      スクリーニング実行
+    </button>
+
+    <!-- 進捗バー -->
+    <div id="progress-area" style="display:none;">
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progress-fill"></div>
       </div>
+      <div class="progress-text" id="progress-text"></div>
     </div>
+
     <div class="status-bar" id="status-bar"></div>
   </div>
 
   <!-- 結果テーブル -->
   <div class="card" id="result-card" style="display:none;">
-    <div class="card-title">スクリーニング結果</div>
-    <div id="result-body"></div>
+    <div class="card-title">
+      スクリーニング結果
+      <span class="hit-count" id="hit-count"></span>
+    </div>
+    <div id="result-body">
+      <table class="result-table" id="result-table">
+        <thead><tr>
+          <th>銘柄</th><th>銘柄名</th><th style="text-align:right">時価総額</th>
+          <th style="text-align:right">現在値</th>
+          <th style="text-align:right">前日比</th><th>検知内容</th>
+        </tr></thead>
+        <tbody id="result-tbody"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- チャート -->
@@ -49,92 +66,127 @@
 </div>
 
 <script>
-const statusBar  = document.getElementById("status-bar");
-const resultCard = document.getElementById("result-card");
-const resultBody = document.getElementById("result-body");
-const chartArea  = document.getElementById("chart-area");
-const chartTitle = document.getElementById("chart-title");
-const screenBtn  = document.getElementById("screen-btn");
+const screenBtn   = document.getElementById("screen-btn");
+const statusBar   = document.getElementById("status-bar");
+const progressArea = document.getElementById("progress-area");
+const progressFill = document.getElementById("progress-fill");
+const progressText = document.getElementById("progress-text");
+const resultCard  = document.getElementById("result-card");
+const resultTbody = document.getElementById("result-tbody");
+const hitCount    = document.getElementById("hit-count");
+const chartArea   = document.getElementById("chart-area");
+const chartTitle  = document.getElementById("chart-title");
+
+let evtSource = null;
 
 function setStatus(html) { statusBar.innerHTML = html; }
 
-/* ── 銘柄保存 ─────────────────────────────────── */
-async function saveTickers() {
-  const text = document.getElementById("tickers-input").value;
-  const res  = await fetch("/api/save_tickers", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({tickers: text}),
-  });
-  const data = await res.json();
-  if (data.ok) {
-    setStatus(`<span class="dot ok"></span> ${data.count} 銘柄を保存しました`);
-  }
+function updateProgress(processed, total, hits) {
+  const pct = total > 0 ? (processed / total * 100) : 0;
+  progressFill.style.width = pct + "%";
+  progressText.textContent = `処理中... ${processed.toLocaleString()} / ${total.toLocaleString()} 銘柄　(${hits} 件検知)`;
 }
 
-/* ── スクリーニング実行 ────────────────────────── */
-async function runScreen() {
+/* ── スクリーニング実行 (SSE) ──────────────────── */
+function runScreen() {
+  // 既存のストリームを閉じる
+  if (evtSource) { evtSource.close(); evtSource = null; }
+
   screenBtn.disabled = true;
-  screenBtn.textContent = "取得中...";
-  setStatus('<span class="spinner"></span> データを取得しています...');
+  screenBtn.textContent = "実行中...";
   resultCard.style.display = "none";
+  resultTbody.innerHTML = "";
+  hitCount.textContent = "";
   closeChart();
 
-  try {
-    const res  = await fetch("/api/screen", {method: "POST"});
-    const data = await res.json();
+  progressArea.style.display = "block";
+  progressFill.style.width = "0%";
+  progressText.textContent = "JPX銘柄一覧を取得中...";
+  setStatus('<span class="spinner"></span> 初期化中...');
 
-    if (!data.ok) {
-      setStatus(`<span class="dot err"></span> ${data.error}`);
-      return;
+  evtSource = new EventSource("/api/screen");
+
+  evtSource.onmessage = function(e) {
+    const d = JSON.parse(e.data);
+
+    switch (d.type) {
+      case "status":
+        progressText.textContent = d.message;
+        break;
+
+      case "start":
+        setStatus(`<span class="dot ok"></span> ${d.total.toLocaleString()} 銘柄を取得 — スクリーニング開始`);
+        updateProgress(0, d.total, 0);
+        break;
+
+      case "progress":
+        updateProgress(d.processed, d.total, d.hits);
+        break;
+
+      case "hit":
+        updateProgress(d.processed, d.total, d.hits);
+        resultCard.style.display = "block";
+        hitCount.textContent = `${d.hits} 件`;
+        appendRow(d.result);
+        break;
+
+      case "done":
+        evtSource.close();
+        evtSource = null;
+        screenBtn.disabled = false;
+        screenBtn.textContent = "スクリーニング実行";
+        progressFill.style.width = "100%";
+        progressText.textContent =
+          `完了 — ${d.processed.toLocaleString()} 銘柄処理 / ${d.hits} 件検知`;
+        setStatus(
+          `<span class="dot ok"></span> スクリーニング完了: ${d.hits} 件検知`
+        );
+        hitCount.textContent = `${d.hits} 件`;
+        if (d.hits === 0) {
+          resultCard.style.display = "block";
+          resultTbody.innerHTML =
+            '<tr><td colspan="6" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
+        }
+        break;
+
+      case "error":
+        evtSource.close();
+        evtSource = null;
+        screenBtn.disabled = false;
+        screenBtn.textContent = "スクリーニング実行";
+        progressArea.style.display = "none";
+        setStatus(`<span class="dot err"></span> ${d.message}`);
+        break;
     }
+  };
 
-    setStatus(
-      `<span class="dot ok"></span> ${data.fetched}/${data.total} 銘柄取得完了 &mdash; ${data.results.length} 件検知`
-    );
-
-    renderResults(data.results);
-  } catch (e) {
-    setStatus(`<span class="dot err"></span> エラー: ${e.message}`);
-  } finally {
+  evtSource.onerror = function() {
+    evtSource.close();
+    evtSource = null;
     screenBtn.disabled = false;
     screenBtn.textContent = "スクリーニング実行";
-  }
+    setStatus('<span class="dot err"></span> 接続が切断されました');
+  };
 }
 
-/* ── 結果描画 ──────────────────────────────────── */
-function renderResults(results) {
-  resultCard.style.display = "block";
+/* ── 結果行の追加 ─────────────────────────────── */
+function appendRow(r) {
+  const dir = r.change_pct >= 0 ? "up" : "down";
+  const sign = r.change_pct >= 0 ? "+" : "";
+  const alertsHtml = r.alerts.map(a =>
+    `<span class="alert-tag ${a.type}">${a.text}</span>`
+  ).join("");
 
-  if (results.length === 0) {
-    resultBody.innerHTML = '<div class="empty-state">条件に該当する銘柄はありませんでした</div>';
-    return;
-  }
-
-  let html = `<table class="result-table">
-    <thead><tr>
-      <th>銘柄</th><th>銘柄名</th><th style="text-align:right">現在値</th>
-      <th style="text-align:right">前日比</th><th>検知内容</th>
-    </tr></thead><tbody>`;
-
-  for (const r of results) {
-    const dir = r.change_pct >= 0 ? "up" : "down";
-    const sign = r.change_pct >= 0 ? "+" : "";
-    const alertsHtml = r.alerts.map(a =>
-      `<span class="alert-tag ${a.type}">${a.text}</span>`
-    ).join("");
-
-    html += `<tr>
-      <td><a class="ticker-link" onclick="showChart('${r.ticker}')">${r.ticker}</a></td>
-      <td>${r.name}</td>
-      <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
-      <td class="change ${dir}">${sign}${r.change_pct.toFixed(1)}%</td>
-      <td>${alertsHtml}</td>
-    </tr>`;
-  }
-
-  html += "</tbody></table>";
-  resultBody.innerHTML = html;
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><a class="ticker-link" onclick="showChart('${r.ticker}')">${r.ticker}</a></td>
+    <td>${r.name}</td>
+    <td class="price">${r.market_cap}</td>
+    <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
+    <td class="change ${dir}">${sign}${r.change_pct.toFixed(1)}%</td>
+    <td>${alertsHtml}</td>
+  `;
+  resultTbody.appendChild(tr);
 }
 
 /* ── チャート ──────────────────────────────────── */
@@ -143,7 +195,6 @@ async function showChart(ticker) {
   chartTitle.textContent = `${ticker} チャート読込中...`;
   document.getElementById("plotly-chart").innerHTML =
     '<div style="text-align:center;padding:40px;color:#8b949e"><span class="spinner"></span></div>';
-
   chartArea.scrollIntoView({behavior: "smooth", block: "start"});
 
   try {
