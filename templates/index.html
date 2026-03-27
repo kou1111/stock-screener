@@ -21,6 +21,41 @@
   <div class="card">
     <div class="card-title">スクリーニング</div>
     <p class="desc">JPX上場銘柄一覧からプライム市場銘柄を自動取得し、時価総額70億円以上を対象にスクリーニングします。</p>
+
+    <!-- 条件設定 -->
+    <div class="settings-section">
+      <div class="settings-header" onclick="toggleSettings()">
+        <span class="settings-toggle" id="settings-toggle">&#9654;</span>
+        <span>条件設定</span>
+      </div>
+      <div class="settings-body" id="settings-body">
+        <div class="setting-row">
+          <label class="setting-check"><input type="checkbox" id="chk-daily" checked><span class="checkmark"></span></label>
+          <span class="setting-label">前日比</span>
+          <input type="number" id="val-daily" value="3" min="0.1" max="50" step="0.1" class="setting-input">
+          <span class="setting-unit">%</span>
+        </div>
+        <div class="setting-row">
+          <label class="setting-check"><input type="checkbox" id="chk-extreme" checked><span class="checkmark"></span></label>
+          <span class="setting-label">高値・安値圏</span>
+          <input type="number" id="val-extreme" value="5" min="0.1" max="50" step="0.1" class="setting-input">
+          <span class="setting-unit">%</span>
+        </div>
+        <div class="setting-row">
+          <label class="setting-check"><input type="checkbox" id="chk-ma" checked><span class="checkmark"></span></label>
+          <span class="setting-label">MA25乖離率</span>
+          <input type="number" id="val-ma" value="5" min="0.1" max="50" step="0.1" class="setting-input">
+          <span class="setting-unit">%</span>
+        </div>
+        <div class="setting-row">
+          <label class="setting-check"><input type="checkbox" id="chk-sigma" checked><span class="checkmark"></span></label>
+          <span class="setting-label">統計異常</span>
+          <input type="number" id="val-sigma" value="2" min="0.5" max="5" step="0.1" class="setting-input">
+          <span class="setting-unit">&sigma;</span>
+        </div>
+      </div>
+    </div>
+
     <button class="btn btn-primary" id="screen-btn" onclick="runScreen()">
       スクリーニング実行
     </button>
@@ -81,6 +116,51 @@ let pollTimer = null;
 let currentJobId = null;
 let currentCursor = 0;
 
+/* ── 条件設定 localStorage ────────────────────────── */
+const SETTINGS_KEY = "stock_screener_settings";
+const settingsFields = [
+  { chk: "chk-daily",   val: "val-daily",   key: "daily_change" },
+  { chk: "chk-extreme", val: "val-extreme",  key: "near_extreme" },
+  { chk: "chk-ma",      val: "val-ma",       key: "ma_deviation" },
+  { chk: "chk-sigma",   val: "val-sigma",    key: "anomaly_sigma" },
+];
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+    if (!saved) return;
+    for (const f of settingsFields) {
+      if (saved[f.key]) {
+        document.getElementById(f.chk).checked = saved[f.key].enabled;
+        document.getElementById(f.val).value = saved[f.key].value;
+      }
+    }
+  } catch {}
+}
+
+function saveSettings() {
+  const s = {};
+  for (const f of settingsFields) {
+    s[f.key] = {
+      enabled: document.getElementById(f.chk).checked,
+      value: parseFloat(document.getElementById(f.val).value),
+    };
+  }
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  return s;
+}
+
+function toggleSettings() {
+  const body = document.getElementById("settings-body");
+  const arrow = document.getElementById("settings-toggle");
+  const open = body.style.display !== "none";
+  body.style.display = open ? "none" : "block";
+  arrow.textContent = open ? "\u25B6" : "\u25BC";
+}
+
+// 初期化: 設定読み込み
+loadSettings();
+
 function setStatus(html) { statusBar.innerHTML = html; }
 
 function updateProgress(processed, total, hits, message) {
@@ -113,7 +193,12 @@ async function runScreen() {
   setStatus('<span class="spinner"></span> 初期化中...');
 
   try {
-    const res = await fetch("/api/screen/start", { method: "POST" });
+    const settings = saveSettings();
+    const res = await fetch("/api/screen/start", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({settings}),
+    });
     const data = await res.json();
     if (!data.ok) {
       setStatus(`<span class="dot err"></span> ${data.error || "開始に失敗しました"}`);

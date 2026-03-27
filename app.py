@@ -24,7 +24,7 @@ import plotly.graph_objects as go
 import requests as http_requests
 from plotly.subplots import make_subplots
 import yfinance as yf
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -189,8 +189,31 @@ def get_ticker_name(ticker: str) -> str:
         return ticker
 
 
+# ── デフォルト条件設定 ─────────────────────────────
+DEFAULT_SETTINGS = {
+    "daily_change":  {"enabled": True, "value": DAILY_CHANGE_THRESHOLD},
+    "near_extreme":  {"enabled": True, "value": NEAR_EXTREME_PCT},
+    "ma_deviation":  {"enabled": True, "value": MA_DEVIATION_THRESHOLD},
+    "anomaly_sigma": {"enabled": True, "value": ANOMALY_SIGMA},
+}
+
+
+def _parse_settings(raw: dict | None) -> dict:
+    """フロントから送られた設定をマージ (不足分はデフォルト補完)"""
+    s = {}
+    for key, default in DEFAULT_SETTINGS.items():
+        if raw and key in raw:
+            s[key] = {
+                "enabled": bool(raw[key].get("enabled", default["enabled"])),
+                "value":   float(raw[key].get("value", default["value"])),
+            }
+        else:
+            s[key] = default.copy()
+    return s
+
+
 # ── 1銘柄の日足スクリーニング ──────────────────────
-def screen_worker(ticker: str) -> dict | None:
+def screen_worker(ticker: str, settings: dict) -> dict | None:
     try:
         tk = yf.Ticker(ticker)
 
@@ -226,31 +249,36 @@ def screen_worker(ticker: str) -> dict | None:
 
         alerts = []
 
-        if abs(change_pct) >= DAILY_CHANGE_THRESHOLD:
+        sc = settings["daily_change"]
+        if sc["enabled"] and abs(change_pct) >= sc["value"]:
             tag = "急騰" if change_pct > 0 else "急落"
             alerts.append({
                 "text": f"{tag} {change_pct:+.1f}%",
                 "type": "up" if change_pct > 0 else "down",
             })
 
-        if ytd_high > 0:
-            d = (ytd_high - current) / ytd_high * 100
-            if d <= NEAR_EXTREME_PCT:
-                alerts.append({"text": f"高値圏 (高値比 -{d:.1f}%)", "type": "up"})
-        if ytd_low > 0:
-            d = (current - ytd_low) / ytd_low * 100
-            if d <= NEAR_EXTREME_PCT:
-                alerts.append({"text": f"安値圏 (安値比 +{d:.1f}%)", "type": "down"})
+        sc = settings["near_extreme"]
+        if sc["enabled"]:
+            if ytd_high > 0:
+                d = (ytd_high - current) / ytd_high * 100
+                if d <= sc["value"]:
+                    alerts.append({"text": f"高値圏 (高値比 -{d:.1f}%)", "type": "up"})
+            if ytd_low > 0:
+                d = (current - ytd_low) / ytd_low * 100
+                if d <= sc["value"]:
+                    alerts.append({"text": f"安値圏 (安値比 +{d:.1f}%)", "type": "down"})
 
-        if abs(ma_dev) >= MA_DEVIATION_THRESHOLD:
+        sc = settings["ma_deviation"]
+        if sc["enabled"] and abs(ma_dev) >= sc["value"]:
             alerts.append({
                 "text": f"MA{MA_PERIOD}乖離 {ma_dev:+.1f}%",
                 "type": "up" if ma_dev > 0 else "down",
             })
 
-        if std_30d > 0 and abs(change_pct) >= std_30d * ANOMALY_SIGMA:
+        sc = settings["anomaly_sigma"]
+        if sc["enabled"] and std_30d > 0 and abs(change_pct) >= std_30d * sc["value"]:
             alerts.append({
-                "text": f"統計異常 ({change_pct:+.1f}% / 2σ={std_30d * ANOMALY_SIGMA:.1f}%)",
+                "text": f"統計異常 ({change_pct:+.1f}% / {sc['value']:.0f}σ={std_30d * sc['value']:.1f}%)",
                 "type": "up" if change_pct > 0 else "down",
             })
 
@@ -274,7 +302,7 @@ def screen_worker(ticker: str) -> dict | None:
 
 
 # ── バックグラウンドスクリーニング処理 ────────────
-def _run_screening(job_id: str):
+def _run_screening(job_id: str, settings: dict):
     try:
         tickers = fetch_jpx_tickers()
     except Exception as e:
@@ -287,7 +315,7 @@ def _run_screening(job_id: str):
                 message="スクリーニング中...")
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(screen_worker, t): t for t in tickers}
+        futures = {executor.submit(screen_worker, t, settings): t for t in tickers}
 
         count = 0
         for future in as_completed(futures):
@@ -471,8 +499,10 @@ def index():
 @app.route("/api/screen/start", methods=["POST"])
 def api_screen_start():
     """スクリーニングをバックグラウンドで開始し、job_id を返す"""
+    raw = request.get_json(silent=True) or {}
+    settings = _parse_settings(raw.get("settings"))
     job_id = _new_job()
-    t = threading.Thread(target=_run_screening, args=(job_id,), daemon=True)
+    t = threading.Thread(target=_run_screening, args=(job_id, settings), daemon=True)
     t.start()
     return jsonify({"ok": True, "job_id": job_id})
 
@@ -484,8 +514,6 @@ def api_screen_poll(job_id):
     if job is None:
         return jsonify({"ok": False, "error": "ジョブが見つかりません"}), 404
 
-    # クエリパラメータで cursor を受け取る
-    from flask import request
     cursor = int(request.args.get("cursor", 0))
 
     with _jobs_lock:
