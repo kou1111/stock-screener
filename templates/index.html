@@ -81,6 +81,19 @@
             <span class="setting-unit">%</span>
           </div>
         </div>
+
+        <!-- 累積下落+日中リバウンドなし -->
+        <div class="setting-row">
+          <label class="setting-check"><input type="checkbox" id="chk-cumdecline" onchange="toggleCumDeclineUI()"><span class="checkmark"></span></label>
+          <span class="setting-label">累積下落+リバウンドなし</span>
+        </div>
+        <div class="decline-sub" id="cumdecline-sub" style="display:none;">
+          <div class="decline-thresholds">
+            <div class="decline-th"><span>累積下落閾値</span><input type="number" id="val-cum-th" value="-15" max="0" step="0.5" class="setting-input"><span class="setting-unit">%</span></div>
+            <div class="decline-th"><span>対象日数</span><input type="number" id="val-cum-days" value="4" min="1" max="10" step="1" class="setting-input"><span class="setting-unit">日</span></div>
+            <div class="decline-th"><span>上髭許容</span><input type="number" id="val-cum-wick" value="30" min="0" max="100" step="1" class="setting-input"><span class="setting-unit">%</span></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -146,6 +159,7 @@ let currentJobId = null;
 let currentCursor = 0;
 let activeCompareDays = [1];  // 現在のジョブの比較日リスト
 let activeDecline = false;    // 連続下落モード
+let activeCumDecline = false; // 累積下落モード
 
 const DAY_LABELS = { 1: "前日比", 2: "2日前比", 3: "3日前比", 4: "4日前比" };
 
@@ -184,6 +198,16 @@ function loadSettings() {
         document.getElementById("val-dec-wick").value = saved.decline.wick_pct;
       toggleDeclineUI();
     }
+    if (saved.cumulative_decline) {
+      document.getElementById("chk-cumdecline").checked = saved.cumulative_decline.enabled;
+      if (saved.cumulative_decline.threshold != null)
+        document.getElementById("val-cum-th").value = saved.cumulative_decline.threshold;
+      if (saved.cumulative_decline.days != null)
+        document.getElementById("val-cum-days").value = saved.cumulative_decline.days;
+      if (saved.cumulative_decline.wick_pct != null)
+        document.getElementById("val-cum-wick").value = saved.cumulative_decline.wick_pct;
+      toggleCumDeclineUI();
+    }
   } catch {}
 }
 
@@ -207,6 +231,13 @@ function saveSettings() {
     wick_pct: parseFloat(document.getElementById("val-dec-wick").value),
   };
 
+  s.cumulative_decline = {
+    enabled: document.getElementById("chk-cumdecline").checked,
+    threshold: parseFloat(document.getElementById("val-cum-th").value),
+    days: parseInt(document.getElementById("val-cum-days").value),
+    wick_pct: parseFloat(document.getElementById("val-cum-wick").value),
+  };
+
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
   return s;
 }
@@ -214,6 +245,11 @@ function saveSettings() {
 function toggleDeclineUI() {
   const on = document.getElementById("chk-decline").checked;
   document.getElementById("decline-sub").style.display = on ? "block" : "none";
+}
+
+function toggleCumDeclineUI() {
+  const on = document.getElementById("chk-cumdecline").checked;
+  document.getElementById("cumdecline-sub").style.display = on ? "block" : "none";
 }
 
 function toggleSettings() {
@@ -227,11 +263,19 @@ function toggleSettings() {
 // 初期化: 設定読み込み
 loadSettings();
 
-function buildTableHeader(days, declineOn) {
+function buildTableHeader(days, declineOn, cumDeclineOn) {
   activeCompareDays = days;
   activeDecline = !!declineOn;
+  activeCumDecline = !!cumDeclineOn;
 
-  if (activeDecline) {
+  if (activeCumDecline) {
+    resultThead.innerHTML = `<tr>
+      <th>銘柄</th><th>銘柄名</th>
+      <th style="text-align:right">N日前終値</th><th style="text-align:right">現在値</th>
+      <th style="text-align:right">累積騰落率</th><th style="text-align:right">最大上髭</th>
+      <th>検知内容</th>
+    </tr>`;
+  } else if (activeDecline) {
     resultThead.innerHTML = `<tr>
       <th>銘柄</th><th>銘柄名</th><th style="text-align:right">現在値</th>
       <th style="text-align:right">1日前</th><th style="text-align:right">2日前</th>
@@ -284,7 +328,7 @@ async function runScreen() {
 
   try {
     const settings = saveSettings();
-    buildTableHeader(settings.compare_days, settings.decline.enabled);
+    buildTableHeader(settings.compare_days, settings.decline.enabled, settings.cumulative_decline.enabled);
     const res = await fetch("/api/screen/start", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -331,7 +375,7 @@ async function pollProgress(jobId) {
     }
 
     // サーバーからテーブル設定を受け取ってヘッダー同期
-    if (d.compare_days) buildTableHeader(d.compare_days, d.decline_enabled);
+    if (d.compare_days) buildTableHeader(d.compare_days, d.decline_enabled, d.cum_decline_enabled);
 
     // 進捗更新
     if (d.total > 0) {
@@ -364,7 +408,7 @@ async function pollProgress(jobId) {
       hitCount.textContent = `${d.hits} 件`;
       if (d.hits === 0) {
         resultCard.style.display = "block";
-        const cols = activeDecline ? 12 : (4 + activeCompareDays.length + 1);
+        const cols = activeCumDecline ? 7 : activeDecline ? 12 : (4 + activeCompareDays.length + 1);
         resultTbody.innerHTML =
           `<tr><td colspan="${cols}" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>`;
       }
@@ -412,7 +456,15 @@ function appendRow(r) {
   ).join("");
 
   let midCols;
-  if (activeDecline) {
+  if (activeCumDecline) {
+    const cd = r.cum_detail || {};
+    const refClose = cd.ref_close != null ? cd.ref_close.toLocaleString("ja-JP", {maximumFractionDigits:1}) : "-";
+    midCols = `
+      <td class="price">${refClose}</td>
+      <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
+      ${fmtChange(cd.cum_change != null ? cd.cum_change : null)}
+      ${fmtWick(cd.max_wick != null ? cd.max_wick : null)}`;
+  } else if (activeDecline) {
     const dd = r.decline_detail || [null,null,null,null];
     const chgCells = [0,1,2,3].map(i => fmtChange(dd[i] ? dd[i].change : null)).join("");
     const wickCells = [0,1,2,3].map(i => fmtWick(dd[i] ? dd[i].wick : null)).join("");

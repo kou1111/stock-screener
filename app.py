@@ -233,6 +233,23 @@ def _parse_settings(raw: dict | None) -> dict:
             "wick_pct": 30.0,
         }
 
+    # 累積下落+日中リバウンドなし
+    if raw and "cumulative_decline" in raw:
+        cd = raw["cumulative_decline"]
+        s["cumulative_decline"] = {
+            "enabled": bool(cd.get("enabled", False)),
+            "threshold": float(cd.get("threshold", -15)),
+            "days": max(1, min(10, int(cd.get("days", 4)))),
+            "wick_pct": float(cd.get("wick_pct", 30)),
+        }
+    else:
+        s["cumulative_decline"] = {
+            "enabled": False,
+            "threshold": -15.0,
+            "days": 4,
+            "wick_pct": 30.0,
+        }
+
     return s
 
 
@@ -359,6 +376,48 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
                     "type": "down",
                 })
 
+        # ── 累積下落+日中リバウンドなし ──
+        cum_detail = None
+        sc_cum = settings.get("cumulative_decline", {})
+        if sc_cum.get("enabled"):
+            n_days = sc_cum.get("days", 4)
+            if len(df) >= n_days + 1:
+                cum_threshold = sc_cum.get("threshold", -15.0)
+                cum_wick_tol = sc_cum.get("wick_pct", 30.0)
+
+                ref_close = float(df["Close"].iloc[-(n_days + 1)])
+                cum_change = (current - ref_close) / ref_close * 100
+
+                # 期間中の各日の上髭を計算し最大値を取得
+                max_wick = 0.0
+                wick_ok = True
+                for i in range(n_days):
+                    d_idx = -(n_days - i)  # 古い日 → 新しい日の順
+                    o = float(df["Open"].iloc[d_idx])
+                    h = float(df["High"].iloc[d_idx])
+                    l = float(df["Low"].iloc[d_idx])
+                    c = float(df["Close"].iloc[d_idx])
+                    upper_wick = h - max(o, c)
+                    day_range = h - l
+                    wick = (upper_wick / day_range * 100) if day_range > 0 else 0.0
+                    if wick > max_wick:
+                        max_wick = wick
+                    if wick > cum_wick_tol:
+                        wick_ok = False
+
+                cum_detail = {
+                    "ref_close": round(ref_close, 1),
+                    "cum_change": round(cum_change, 2),
+                    "max_wick": round(max_wick, 1),
+                    "days": n_days,
+                }
+
+                if cum_change <= cum_threshold and wick_ok:
+                    alerts.append({
+                        "text": f"累積下落{n_days}日 {cum_change:+.1f}%",
+                        "type": "down",
+                    })
+
         if not alerts:
             return None
 
@@ -376,6 +435,8 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
         }
         if decline_detail is not None:
             result["decline_detail"] = decline_detail
+        if cum_detail is not None:
+            result["cum_detail"] = cum_detail
         return result
 
     except Exception:
@@ -586,7 +647,8 @@ def api_screen_start():
     # フロントがテーブルヘッダーを構築するための情報をジョブに保存
     _update_job(job_id,
                 compare_days=settings["compare_days"],
-                decline_enabled=settings["decline"]["enabled"])
+                decline_enabled=settings["decline"]["enabled"],
+                cum_decline_enabled=settings["cumulative_decline"]["enabled"])
     t = threading.Thread(target=_run_screening, args=(job_id, settings), daemon=True)
     t.start()
     return jsonify({"ok": True, "job_id": job_id})
@@ -616,6 +678,7 @@ def api_screen_poll(job_id):
         "cursor": new_cursor,
         "compare_days": job.get("compare_days", [1]),
         "decline_enabled": job.get("decline_enabled", False),
+        "cum_decline_enabled": job.get("cum_decline_enabled", False),
     })
 
 
