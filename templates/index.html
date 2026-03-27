@@ -210,6 +210,9 @@ async function pollProgress(jobId) {
   }
 }
 
+/* ── 表示用コード (「.T」を除去) ────────────────── */
+function displayCode(ticker) { return ticker.replace(/\.T$/, ""); }
+
 /* ── 結果行の追加 ─────────────────────────────── */
 function appendRow(r) {
   const dir = r.change_pct >= 0 ? "up" : "down";
@@ -220,7 +223,7 @@ function appendRow(r) {
 
   const tr = document.createElement("tr");
   tr.innerHTML = `
-    <td><a class="ticker-link" onclick="showChart('${r.ticker}')">${r.ticker}</a></td>
+    <td><a class="ticker-link" onclick="showChart('${r.ticker}')">${displayCode(r.ticker)}</a></td>
     <td>${r.name}</td>
     <td class="price">${r.market_cap}</td>
     <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
@@ -233,7 +236,8 @@ function appendRow(r) {
 /* ── チャート ──────────────────────────────────── */
 async function showChart(ticker) {
   chartArea.classList.add("visible");
-  chartTitle.textContent = `${ticker} チャート読込中...`;
+  const code = displayCode(ticker);
+  chartTitle.textContent = `${code} チャート読込中...`;
   document.getElementById("plotly-chart").innerHTML =
     '<div style="text-align:center;padding:40px;color:#8b949e"><span class="spinner"></span></div>';
   chartArea.scrollIntoView({behavior: "smooth", block: "start"});
@@ -242,15 +246,15 @@ async function showChart(ticker) {
     const res  = await fetch(`/api/chart/${ticker}`);
     const data = await res.json();
     if (!data.ok) {
-      chartTitle.textContent = `${ticker} - エラー`;
+      chartTitle.textContent = `${code} - エラー`;
       document.getElementById("plotly-chart").innerHTML =
         `<div class="empty-state">${data.error}</div>`;
       return;
     }
-    chartTitle.textContent = `${ticker} 5分足チャート`;
+    chartTitle.textContent = `${code} 5分足チャート`;
     Plotly.newPlot("plotly-chart", data.chart.data, data.chart.layout, {responsive: true});
   } catch (e) {
-    chartTitle.textContent = `${ticker} - エラー`;
+    chartTitle.textContent = `${code} - エラー`;
     document.getElementById("plotly-chart").innerHTML =
       `<div class="empty-state">${e.message}</div>`;
   }
