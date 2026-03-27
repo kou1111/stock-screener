@@ -209,6 +209,14 @@ def _parse_settings(raw: dict | None) -> dict:
             }
         else:
             s[key] = default.copy()
+
+    # 比較対象日 (営業日ベース): [1] = 前日のみ, [1,2,3] = 前日+2日前+3日前
+    if raw and "compare_days" in raw:
+        days = [int(d) for d in raw["compare_days"] if int(d) in (1, 2, 3, 4)]
+        s["compare_days"] = sorted(days) if days else [1]
+    else:
+        s["compare_days"] = [1]
+
     return s
 
 
@@ -235,8 +243,19 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
             return None
 
         current = float(close[-1])
-        prev = float(close[-2])
-        change_pct = (current - prev) / prev * 100
+
+        # 複数営業日の騰落率を計算 (日足データのインデックスで遡る)
+        compare_days = settings.get("compare_days", [1])
+        max_day = max(compare_days)
+        if len(close) < max_day + 1:
+            return None
+
+        changes: dict[int, float] = {}
+        for d in compare_days:
+            ref = float(close[-(d + 1)])
+            changes[d] = (current - ref) / ref * 100
+
+        change_pct = changes.get(1, 0.0)  # 前日比 (他条件でも使用)
 
         ytd_high = float(np.max(close))
         ytd_low = float(np.min(close))
@@ -249,13 +268,17 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
 
         alerts = []
 
+        # 前日比条件: いずれかの比較日が閾値を超えれば検知
         sc = settings["daily_change"]
-        if sc["enabled"] and abs(change_pct) >= sc["value"]:
-            tag = "急騰" if change_pct > 0 else "急落"
-            alerts.append({
-                "text": f"{tag} {change_pct:+.1f}%",
-                "type": "up" if change_pct > 0 else "down",
-            })
+        if sc["enabled"]:
+            for d, pct in changes.items():
+                if abs(pct) >= sc["value"]:
+                    label = "前日比" if d == 1 else f"{d}日前比"
+                    tag = "急騰" if pct > 0 else "急落"
+                    alerts.append({
+                        "text": f"{tag} {label} {pct:+.1f}%",
+                        "type": "up" if pct > 0 else "down",
+                    })
 
         sc = settings["near_extreme"]
         if sc["enabled"]:
@@ -293,6 +316,7 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
             "name": name,
             "price": round(current, 1),
             "change_pct": round(change_pct, 2),
+            "changes": {str(d): round(pct, 2) for d, pct in changes.items()},
             "market_cap": f"{mcap_b:,.0f}億",
             "alerts": alerts,
         }
@@ -502,6 +526,8 @@ def api_screen_start():
     raw = request.get_json(silent=True) or {}
     settings = _parse_settings(raw.get("settings"))
     job_id = _new_job()
+    # compare_days をジョブに保存 (フロントがテーブルヘッダーを構築するため)
+    _update_job(job_id, compare_days=settings["compare_days"])
     t = threading.Thread(target=_run_screening, args=(job_id, settings), daemon=True)
     t.start()
     return jsonify({"ok": True, "job_id": job_id})
@@ -529,6 +555,7 @@ def api_screen_poll(job_id):
         "hits": job["hits"],
         "new_results": new_results,
         "cursor": new_cursor,
+        "compare_days": job.get("compare_days", [1]),
     })
 
 

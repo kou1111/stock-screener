@@ -53,6 +53,15 @@
           <input type="number" id="val-sigma" value="2" min="0.5" max="5" step="0.1" class="setting-input">
           <span class="setting-unit">&sigma;</span>
         </div>
+        <div class="setting-row setting-row-days">
+          <span class="setting-label">比較対象日</span>
+          <div class="day-checks">
+            <label class="day-check"><input type="checkbox" id="chk-day1" checked><span>前日</span></label>
+            <label class="day-check"><input type="checkbox" id="chk-day2"><span>2日前</span></label>
+            <label class="day-check"><input type="checkbox" id="chk-day3"><span>3日前</span></label>
+            <label class="day-check"><input type="checkbox" id="chk-day4"><span>4日前</span></label>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -79,7 +88,7 @@
     </div>
     <div id="result-body">
       <table class="result-table" id="result-table">
-        <thead><tr>
+        <thead id="result-thead"><tr>
           <th>銘柄</th><th>銘柄名</th><th style="text-align:right">時価総額</th>
           <th style="text-align:right">現在値</th>
           <th style="text-align:right">前日比</th><th>検知内容</th>
@@ -107,6 +116,7 @@ const progressArea = document.getElementById("progress-area");
 const progressFill = document.getElementById("progress-fill");
 const progressText = document.getElementById("progress-text");
 const resultCard   = document.getElementById("result-card");
+const resultThead  = document.getElementById("result-thead");
 const resultTbody  = document.getElementById("result-tbody");
 const hitCount     = document.getElementById("hit-count");
 const chartArea    = document.getElementById("chart-area");
@@ -115,6 +125,9 @@ const chartTitle   = document.getElementById("chart-title");
 let pollTimer = null;
 let currentJobId = null;
 let currentCursor = 0;
+let activeCompareDays = [1];  // 現在のジョブの比較日リスト
+
+const DAY_LABELS = { 1: "前日比", 2: "2日前比", 3: "3日前比", 4: "4日前比" };
 
 /* ── 条件設定 localStorage ────────────────────────── */
 const SETTINGS_KEY = "stock_screener_settings";
@@ -124,6 +137,7 @@ const settingsFields = [
   { chk: "chk-ma",      val: "val-ma",       key: "ma_deviation" },
   { chk: "chk-sigma",   val: "val-sigma",    key: "anomaly_sigma" },
 ];
+const dayCheckIds = ["chk-day1", "chk-day2", "chk-day3", "chk-day4"];
 
 function loadSettings() {
   try {
@@ -134,6 +148,11 @@ function loadSettings() {
         document.getElementById(f.chk).checked = saved[f.key].enabled;
         document.getElementById(f.val).value = saved[f.key].value;
       }
+    }
+    if (saved.compare_days) {
+      dayCheckIds.forEach((id, i) => {
+        document.getElementById(id).checked = saved.compare_days.includes(i + 1);
+      });
     }
   } catch {}
 }
@@ -146,6 +165,12 @@ function saveSettings() {
       value: parseFloat(document.getElementById(f.val).value),
     };
   }
+  // 比較対象日
+  const days = [];
+  dayCheckIds.forEach((id, i) => {
+    if (document.getElementById(id).checked) days.push(i + 1);
+  });
+  s.compare_days = days.length > 0 ? days : [1];
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
   return s;
 }
@@ -160,6 +185,17 @@ function toggleSettings() {
 
 // 初期化: 設定読み込み
 loadSettings();
+
+function buildTableHeader(days) {
+  activeCompareDays = days;
+  const changeCols = days.map(d =>
+    `<th style="text-align:right">${DAY_LABELS[d] || d + "日前比"}</th>`
+  ).join("");
+  resultThead.innerHTML = `<tr>
+    <th>銘柄</th><th>銘柄名</th><th style="text-align:right">時価総額</th>
+    <th style="text-align:right">現在値</th>${changeCols}<th>検知内容</th>
+  </tr>`;
+}
 
 function setStatus(html) { statusBar.innerHTML = html; }
 
@@ -194,6 +230,7 @@ async function runScreen() {
 
   try {
     const settings = saveSettings();
+    buildTableHeader(settings.compare_days);
     const res = await fetch("/api/screen/start", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -239,6 +276,9 @@ async function pollProgress(jobId) {
       return;
     }
 
+    // compare_days をサーバーから受け取ってヘッダー同期
+    if (d.compare_days) buildTableHeader(d.compare_days);
+
     // 進捗更新
     if (d.total > 0) {
       updateProgress(d.processed, d.total, d.hits, d.message);
@@ -270,8 +310,9 @@ async function pollProgress(jobId) {
       hitCount.textContent = `${d.hits} 件`;
       if (d.hits === 0) {
         resultCard.style.display = "block";
+        const cols = 4 + activeCompareDays.length + 1;
         resultTbody.innerHTML =
-          '<tr><td colspan="6" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
+          `<tr><td colspan="${cols}" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>`;
       }
     } else if (d.status === "lost") {
       stopPolling();
@@ -299,12 +340,22 @@ async function pollProgress(jobId) {
 function displayCode(ticker) { return ticker.replace(/\.T$/, ""); }
 
 /* ── 結果行の追加 ─────────────────────────────── */
+function fmtChange(pct) {
+  if (pct == null) return '<td class="change">-</td>';
+  const dir = pct >= 0 ? "up" : "down";
+  const sign = pct >= 0 ? "+" : "";
+  return `<td class="change ${dir}">${sign}${pct.toFixed(1)}%</td>`;
+}
+
 function appendRow(r) {
-  const dir = r.change_pct >= 0 ? "up" : "down";
-  const sign = r.change_pct >= 0 ? "+" : "";
   const alertsHtml = r.alerts.map(a =>
     `<span class="alert-tag ${a.type}">${a.text}</span>`
   ).join("");
+
+  const changeCols = activeCompareDays.map(d => {
+    const pct = r.changes ? r.changes[String(d)] : (d === 1 ? r.change_pct : null);
+    return fmtChange(pct);
+  }).join("");
 
   const tr = document.createElement("tr");
   tr.innerHTML = `
@@ -312,7 +363,7 @@ function appendRow(r) {
     <td>${r.name}</td>
     <td class="price">${r.market_cap}</td>
     <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
-    <td class="change ${dir}">${sign}${r.change_pct.toFixed(1)}%</td>
+    ${changeCols}
     <td>${alertsHtml}</td>
   `;
   resultTbody.appendChild(tr);

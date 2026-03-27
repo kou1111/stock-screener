@@ -393,6 +393,48 @@ header .badge-auto {
   color: var(--muted);
   min-width: 16px;
 }
+.setting-row-days {
+  padding-top: 8px;
+}
+.day-checks {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.day-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+}
+.day-check input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+}
+.day-check input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.day-check input:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 7px;
+  border: solid #000;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
 
 /* ── レスポンシブ ──────────────────────────────── */
 @media (max-width: 640px) {
