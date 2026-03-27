@@ -238,14 +238,14 @@ def _parse_settings(raw: dict | None) -> dict:
         cd = raw["cumulative_decline"]
         s["cumulative_decline"] = {
             "enabled": bool(cd.get("enabled", False)),
-            "threshold": float(cd.get("threshold", -15)),
+            "threshold": float(cd.get("threshold", -3)),
             "days": max(1, min(10, int(cd.get("days", 4)))),
             "wick_pct": float(cd.get("wick_pct", 30)),
         }
     else:
         s["cumulative_decline"] = {
             "enabled": False,
-            "threshold": -15.0,
+            "threshold": -3.0,
             "days": 4,
             "wick_pct": 30.0,
         }
@@ -382,7 +382,7 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
         if sc_cum.get("enabled"):
             n_days = sc_cum.get("days", 4)
             if len(df) >= n_days + 1:
-                cum_threshold = sc_cum.get("threshold", -15.0)
+                cum_threshold = sc_cum.get("threshold", -3.0)
                 cum_wick_tol = sc_cum.get("wick_pct", 30.0)
 
                 ref_close = float(df["Close"].iloc[-(n_days + 1)])
@@ -452,6 +452,12 @@ def _run_screening(job_id: str, settings: dict):
         return
 
     total = len(tickers)
+    sc_cum = settings.get("cumulative_decline", {})
+    if sc_cum.get("enabled"):
+        logging.info(
+            "累積下落条件: 閾値=%s%%, 日数=%s, 上髭=%s%%",
+            sc_cum.get("threshold"), sc_cum.get("days"), sc_cum.get("wick_pct"),
+        )
     logging.info("スクリーニング開始: %d 銘柄", total)
     _update_job(job_id, status="running", total=total, processed=0,
                 message="スクリーニング中...")
