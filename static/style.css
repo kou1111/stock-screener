@@ -436,6 +436,31 @@ header .badge-auto {
   transform: rotate(45deg);
 }
 
+/* ── 連続下落サブ設定 ─────────────────────────── */
+.decline-sub {
+  margin-left: 26px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: rgba(88, 166, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.decline-thresholds {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.decline-th {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text);
+}
+.decline-th .setting-input {
+  width: 60px;
+}
+
 /* ── レスポンシブ ──────────────────────────────── */
 @media (max-width: 640px) {
   .ticker-area { flex-direction: column; }

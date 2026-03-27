@@ -62,6 +62,25 @@
             <label class="day-check"><input type="checkbox" id="chk-day4"><span>4日前</span></label>
           </div>
         </div>
+
+        <!-- 連続下落+リバウンドなし -->
+        <div class="setting-row">
+          <label class="setting-check"><input type="checkbox" id="chk-decline" onchange="toggleDeclineUI()"><span class="checkmark"></span></label>
+          <span class="setting-label">連続下落+リバウンドなし</span>
+        </div>
+        <div class="decline-sub" id="decline-sub" style="display:none;">
+          <div class="decline-thresholds">
+            <div class="decline-th"><span>1日前</span><input type="number" id="val-dec-1" value="-1" max="0" step="0.1" class="setting-input"><span class="setting-unit">%</span></div>
+            <div class="decline-th"><span>2日前</span><input type="number" id="val-dec-2" value="-1" max="0" step="0.1" class="setting-input"><span class="setting-unit">%</span></div>
+            <div class="decline-th"><span>3日前</span><input type="number" id="val-dec-3" value="-2" max="0" step="0.1" class="setting-input"><span class="setting-unit">%</span></div>
+            <div class="decline-th"><span>4日前</span><input type="number" id="val-dec-4" value="-1" max="0" step="0.1" class="setting-input"><span class="setting-unit">%</span></div>
+          </div>
+          <div class="decline-th" style="margin-top:6px;">
+            <span>上髭許容</span>
+            <input type="number" id="val-dec-wick" value="30" min="0" max="100" step="1" class="setting-input">
+            <span class="setting-unit">%</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -126,6 +145,7 @@ let pollTimer = null;
 let currentJobId = null;
 let currentCursor = 0;
 let activeCompareDays = [1];  // 現在のジョブの比較日リスト
+let activeDecline = false;    // 連続下落モード
 
 const DAY_LABELS = { 1: "前日比", 2: "2日前比", 3: "3日前比", 4: "4日前比" };
 
@@ -154,6 +174,16 @@ function loadSettings() {
         document.getElementById(id).checked = saved.compare_days.includes(i + 1);
       });
     }
+    if (saved.decline) {
+      document.getElementById("chk-decline").checked = saved.decline.enabled;
+      if (saved.decline.thresholds) {
+        for (let i = 0; i < 4; i++)
+          document.getElementById(`val-dec-${i+1}`).value = saved.decline.thresholds[i];
+      }
+      if (saved.decline.wick_pct != null)
+        document.getElementById("val-dec-wick").value = saved.decline.wick_pct;
+      toggleDeclineUI();
+    }
   } catch {}
 }
 
@@ -165,14 +195,25 @@ function saveSettings() {
       value: parseFloat(document.getElementById(f.val).value),
     };
   }
-  // 比較対象日
   const days = [];
   dayCheckIds.forEach((id, i) => {
     if (document.getElementById(id).checked) days.push(i + 1);
   });
   s.compare_days = days.length > 0 ? days : [1];
+
+  s.decline = {
+    enabled: document.getElementById("chk-decline").checked,
+    thresholds: [1,2,3,4].map(i => parseFloat(document.getElementById(`val-dec-${i}`).value)),
+    wick_pct: parseFloat(document.getElementById("val-dec-wick").value),
+  };
+
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
   return s;
+}
+
+function toggleDeclineUI() {
+  const on = document.getElementById("chk-decline").checked;
+  document.getElementById("decline-sub").style.display = on ? "block" : "none";
 }
 
 function toggleSettings() {
@@ -186,15 +227,28 @@ function toggleSettings() {
 // 初期化: 設定読み込み
 loadSettings();
 
-function buildTableHeader(days) {
+function buildTableHeader(days, declineOn) {
   activeCompareDays = days;
-  const changeCols = days.map(d =>
-    `<th style="text-align:right">${DAY_LABELS[d] || d + "日前比"}</th>`
-  ).join("");
-  resultThead.innerHTML = `<tr>
-    <th>銘柄</th><th>銘柄名</th><th style="text-align:right">時価総額</th>
-    <th style="text-align:right">現在値</th>${changeCols}<th>検知内容</th>
-  </tr>`;
+  activeDecline = !!declineOn;
+
+  if (activeDecline) {
+    resultThead.innerHTML = `<tr>
+      <th>銘柄</th><th>銘柄名</th><th style="text-align:right">現在値</th>
+      <th style="text-align:right">1日前</th><th style="text-align:right">2日前</th>
+      <th style="text-align:right">3日前</th><th style="text-align:right">4日前</th>
+      <th style="text-align:right">髭1日</th><th style="text-align:right">髭2日</th>
+      <th style="text-align:right">髭3日</th><th style="text-align:right">髭4日</th>
+      <th>検知内容</th>
+    </tr>`;
+  } else {
+    const changeCols = days.map(d =>
+      `<th style="text-align:right">${DAY_LABELS[d] || d + "日前比"}</th>`
+    ).join("");
+    resultThead.innerHTML = `<tr>
+      <th>銘柄</th><th>銘柄名</th><th style="text-align:right">時価総額</th>
+      <th style="text-align:right">現在値</th>${changeCols}<th>検知内容</th>
+    </tr>`;
+  }
 }
 
 function setStatus(html) { statusBar.innerHTML = html; }
@@ -230,7 +284,7 @@ async function runScreen() {
 
   try {
     const settings = saveSettings();
-    buildTableHeader(settings.compare_days);
+    buildTableHeader(settings.compare_days, settings.decline.enabled);
     const res = await fetch("/api/screen/start", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -276,8 +330,8 @@ async function pollProgress(jobId) {
       return;
     }
 
-    // compare_days をサーバーから受け取ってヘッダー同期
-    if (d.compare_days) buildTableHeader(d.compare_days);
+    // サーバーからテーブル設定を受け取ってヘッダー同期
+    if (d.compare_days) buildTableHeader(d.compare_days, d.decline_enabled);
 
     // 進捗更新
     if (d.total > 0) {
@@ -310,7 +364,7 @@ async function pollProgress(jobId) {
       hitCount.textContent = `${d.hits} 件`;
       if (d.hits === 0) {
         resultCard.style.display = "block";
-        const cols = 4 + activeCompareDays.length + 1;
+        const cols = activeDecline ? 12 : (4 + activeCompareDays.length + 1);
         resultTbody.innerHTML =
           `<tr><td colspan="${cols}" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>`;
       }
@@ -347,23 +401,40 @@ function fmtChange(pct) {
   return `<td class="change ${dir}">${sign}${pct.toFixed(1)}%</td>`;
 }
 
+function fmtWick(val) {
+  if (val == null) return '<td class="price">-</td>';
+  return `<td class="price">${val.toFixed(1)}%</td>`;
+}
+
 function appendRow(r) {
   const alertsHtml = r.alerts.map(a =>
     `<span class="alert-tag ${a.type}">${a.text}</span>`
   ).join("");
 
-  const changeCols = activeCompareDays.map(d => {
-    const pct = r.changes ? r.changes[String(d)] : (d === 1 ? r.change_pct : null);
-    return fmtChange(pct);
-  }).join("");
+  let midCols;
+  if (activeDecline) {
+    const dd = r.decline_detail || [null,null,null,null];
+    const chgCells = [0,1,2,3].map(i => fmtChange(dd[i] ? dd[i].change : null)).join("");
+    const wickCells = [0,1,2,3].map(i => fmtWick(dd[i] ? dd[i].wick : null)).join("");
+    midCols = `
+      <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
+      ${chgCells}${wickCells}`;
+  } else {
+    const changeCells = activeCompareDays.map(d => {
+      const pct = r.changes ? r.changes[String(d)] : (d === 1 ? r.change_pct : null);
+      return fmtChange(pct);
+    }).join("");
+    midCols = `
+      <td class="price">${r.market_cap}</td>
+      <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
+      ${changeCells}`;
+  }
 
   const tr = document.createElement("tr");
   tr.innerHTML = `
     <td><a class="ticker-link" onclick="showChart('${r.ticker}')">${displayCode(r.ticker)}</a></td>
     <td>${r.name}</td>
-    <td class="price">${r.market_cap}</td>
-    <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
-    ${changeCols}
+    ${midCols}
     <td>${alertsHtml}</td>
   `;
   resultTbody.appendChild(tr);

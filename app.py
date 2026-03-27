@@ -217,6 +217,22 @@ def _parse_settings(raw: dict | None) -> dict:
     else:
         s["compare_days"] = [1]
 
+    # 連続下落+リバウンドなし
+    if raw and "decline" in raw:
+        d = raw["decline"]
+        th_raw = d.get("thresholds", [-1, -1, -2, -1])
+        s["decline"] = {
+            "enabled": bool(d.get("enabled", False)),
+            "thresholds": [float(th_raw[i]) for i in range(4)],
+            "wick_pct": float(d.get("wick_pct", 30)),
+        }
+    else:
+        s["decline"] = {
+            "enabled": False,
+            "thresholds": [-1.0, -1.0, -2.0, -1.0],
+            "wick_pct": 30.0,
+        }
+
     return s
 
 
@@ -305,13 +321,51 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
                 "type": "up" if change_pct > 0 else "down",
             })
 
+        # ── 連続下落+リバウンドなし ──
+        decline_detail = None
+        sc_dec = settings.get("decline", {})
+        if sc_dec.get("enabled") and len(df) >= 5:
+            thresholds = sc_dec.get("thresholds", [-1, -1, -2, -1])
+            wick_tol = sc_dec.get("wick_pct", 30.0)
+
+            detail = []
+            all_met = True
+            for i in range(4):
+                d_idx = -(i + 1)  # -1, -2, -3, -4
+                c_now = float(df["Close"].iloc[d_idx])
+                c_prev = float(df["Close"].iloc[d_idx - 1])
+                day_chg = (c_now - c_prev) / c_prev * 100
+
+                o = float(df["Open"].iloc[d_idx])
+                h = float(df["High"].iloc[d_idx])
+                l = float(df["Low"].iloc[d_idx])
+                c = float(df["Close"].iloc[d_idx])
+
+                upper_wick = h - max(o, c)
+                day_range = h - l
+                wick = (upper_wick / day_range * 100) if day_range > 0 else 0.0
+
+                detail.append({"change": round(day_chg, 2), "wick": round(wick, 1)})
+
+                if day_chg > thresholds[i]:
+                    all_met = False
+                if wick > wick_tol:
+                    all_met = False
+
+            decline_detail = detail
+            if all_met:
+                alerts.append({
+                    "text": "連続下落(リバウンドなし)",
+                    "type": "down",
+                })
+
         if not alerts:
             return None
 
         mcap_b = mcap / 1e8
         name = get_ticker_name(ticker)
 
-        return {
+        result = {
             "ticker": ticker,
             "name": name,
             "price": round(current, 1),
@@ -320,6 +374,9 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
             "market_cap": f"{mcap_b:,.0f}億",
             "alerts": alerts,
         }
+        if decline_detail is not None:
+            result["decline_detail"] = decline_detail
+        return result
 
     except Exception:
         return None
@@ -526,8 +583,10 @@ def api_screen_start():
     raw = request.get_json(silent=True) or {}
     settings = _parse_settings(raw.get("settings"))
     job_id = _new_job()
-    # compare_days をジョブに保存 (フロントがテーブルヘッダーを構築するため)
-    _update_job(job_id, compare_days=settings["compare_days"])
+    # フロントがテーブルヘッダーを構築するための情報をジョブに保存
+    _update_job(job_id,
+                compare_days=settings["compare_days"],
+                decline_enabled=settings["decline"]["enabled"])
     t = threading.Thread(target=_run_screening, args=(job_id, settings), daemon=True)
     t.start()
     return jsonify({"ok": True, "job_id": job_id})
@@ -556,6 +615,7 @@ def api_screen_poll(job_id):
         "new_results": new_results,
         "cursor": new_cursor,
         "compare_days": job.get("compare_days", [1]),
+        "decline_enabled": job.get("decline_enabled", False),
     })
 
 
