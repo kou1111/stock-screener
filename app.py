@@ -8,6 +8,7 @@ JPX上場銘柄一覧から自動取得 → 2段階スクリーニング
 
 import io
 import json
+import logging
 import os
 import tempfile
 import threading
@@ -26,6 +27,7 @@ import yfinance as yf
 from flask import Flask, jsonify, render_template
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # ── 設定 ───────────────────────────────────────────
 JPX_URL = "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls"
@@ -138,6 +140,7 @@ def _flush_job(job_id: str):
 
 # ── JPX 銘柄一覧取得 ──────────────────────────────
 def fetch_jpx_tickers() -> list[str]:
+    """JPX Excelからプライム市場の銘柄のみ取得する"""
     global _jpx_names
     r = http_requests.get(JPX_URL, timeout=30)
     r.raise_for_status()
@@ -149,7 +152,20 @@ def fetch_jpx_tickers() -> list[str]:
         "scale_code", "scale",
     ]
 
+    total_rows = len(df)
+
+    # ETF / REIT / PRO Market を除外
     stocks = df[~df["market"].str.contains("ETF|REIT|PRO", na=False)].copy()
+    after_etf = len(stocks)
+
+    # プライム市場のみに絞る (時価総額70億円以上の銘柄はほぼプライム市場)
+    stocks = stocks[stocks["market"].str.contains("プライム", na=False)]
+    after_prime = len(stocks)
+
+    logging.info(
+        "JPXフィルタ: 全%d行 → ETF等除外 %d → プライム市場 %d 銘柄",
+        total_rows, after_etf, after_prime,
+    )
 
     tickers = []
     for _, row in stocks.iterrows():
@@ -173,21 +189,17 @@ def get_ticker_name(ticker: str) -> str:
         return ticker
 
 
-# ── 時価総額の軽量プリフィルタ ─────────────────────
-def mcap_filter(ticker: str) -> tuple[str, float]:
-    """時価総額だけを返す軽量チェック (fast_info のみ)"""
-    try:
-        mcap = yf.Ticker(ticker).fast_info.get("marketCap", 0) or 0
-    except Exception:
-        mcap = 0
-    return (ticker, float(mcap))
-
-
 # ── 1銘柄の日足スクリーニング ──────────────────────
-def screen_worker(ticker_mcap: tuple[str, float]) -> dict | None:
-    ticker, mcap = ticker_mcap
+def screen_worker(ticker: str) -> dict | None:
     try:
         tk = yf.Ticker(ticker)
+
+        try:
+            mcap = tk.fast_info.get("marketCap", 0) or 0
+        except Exception:
+            mcap = 0
+        if mcap < MIN_MARKET_CAP:
+            return None
 
         end = datetime.now()
         start = end - timedelta(days=LOOKBACK_DAYS)
@@ -269,34 +281,13 @@ def _run_screening(job_id: str):
         _update_job(job_id, status="error", message=f"JPX一覧の取得に失敗: {e}")
         return
 
-    # ── フェーズ1: 時価総額プリフィルタ ──
-    all_count = len(tickers)
-    _update_job(job_id, status="running", total=all_count, processed=0,
-                message="時価総額フィルタ中...")
-
-    qualified: list[tuple[str, float]] = []   # (ticker, mcap)
+    total = len(tickers)
+    logging.info("スクリーニング開始: %d 銘柄", total)
+    _update_job(job_id, status="running", total=total, processed=0,
+                message="スクリーニング中...")
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(mcap_filter, t): t for t in tickers}
-
-        count = 0
-        for future in as_completed(futures):
-            ticker, mcap = future.result()
-            if mcap >= MIN_MARKET_CAP:
-                qualified.append((ticker, mcap))
-            count += 1
-            _increment_processed(job_id)
-            if count % 50 == 0:
-                _update_job(job_id, message=f"時価総額フィルタ中... ({len(qualified)}銘柄該当)")
-                _flush_job(job_id)
-
-    # ── フェーズ2: 本スクリーニング ──
-    total = len(qualified)
-    _update_job(job_id, total=total, processed=0,
-                message=f"スクリーニング中... (対象 {total} 銘柄)")
-
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(screen_worker, tm): tm for tm in qualified}
+        futures = {executor.submit(screen_worker, t): t for t in tickers}
 
         count = 0
         for future in as_completed(futures):
@@ -308,6 +299,9 @@ def _run_screening(job_id: str):
             if count % 20 == 0:
                 _flush_job(job_id)
 
+    job = _get_job(job_id)
+    hits = job["hits"] if job else 0
+    logging.info("スクリーニング完了: %d 銘柄処理 / %d 件検知", total, hits)
     _update_job(job_id, status="done", message="完了")
 
 
