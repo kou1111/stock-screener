@@ -19,80 +19,26 @@
 
   <!-- 実行パネル -->
   <div class="card">
-    <div class="card-title">スクリーニング</div>
-    <p class="desc">JPX上場銘柄一覧からプライム市場銘柄を自動取得し、時価総額70億円以上を対象にスクリーニングします。</p>
+    <div class="card-title">累積下落＋リバウンドなし検知</div>
+    <p class="desc">JPX上場プライム市場銘柄（時価総額70億円以上）を対象に、累積下落かつ日中リバウンドなしの銘柄を検知します。</p>
 
     <!-- 条件設定 -->
     <div class="settings-section">
-      <div class="settings-header" onclick="toggleSettings()">
-        <span class="settings-toggle" id="settings-toggle">&#9654;</span>
-        <span>条件設定</span>
-      </div>
       <div class="settings-body" id="settings-body">
         <div class="setting-row">
-          <label class="setting-check"><input type="checkbox" id="chk-daily" checked><span class="checkmark"></span></label>
-          <span class="setting-label">前日比</span>
-          <input type="number" id="val-daily" value="3" min="0.1" max="50" step="0.1" class="setting-input">
+          <span class="setting-label">累積下落閾値</span>
+          <input type="number" id="val-threshold" value="-3" max="0" step="0.5" class="setting-input">
           <span class="setting-unit">%</span>
         </div>
         <div class="setting-row">
-          <label class="setting-check"><input type="checkbox" id="chk-extreme" checked><span class="checkmark"></span></label>
-          <span class="setting-label">高値・安値圏</span>
-          <input type="number" id="val-extreme" value="5" min="0.1" max="50" step="0.1" class="setting-input">
+          <span class="setting-label">対象日数</span>
+          <input type="number" id="val-days" value="4" min="1" max="10" step="1" class="setting-input">
+          <span class="setting-unit">日</span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">上髭許容</span>
+          <input type="number" id="val-wick" value="30" min="0" max="100" step="1" class="setting-input">
           <span class="setting-unit">%</span>
-        </div>
-        <div class="setting-row">
-          <label class="setting-check"><input type="checkbox" id="chk-ma" checked><span class="checkmark"></span></label>
-          <span class="setting-label">MA25乖離率</span>
-          <input type="number" id="val-ma" value="5" min="0.1" max="50" step="0.1" class="setting-input">
-          <span class="setting-unit">%</span>
-        </div>
-        <div class="setting-row">
-          <label class="setting-check"><input type="checkbox" id="chk-sigma" checked><span class="checkmark"></span></label>
-          <span class="setting-label">統計異常</span>
-          <input type="number" id="val-sigma" value="2" min="0.5" max="5" step="0.1" class="setting-input">
-          <span class="setting-unit">&sigma;</span>
-        </div>
-        <div class="setting-row setting-row-days">
-          <span class="setting-label">比較対象日</span>
-          <div class="day-checks">
-            <label class="day-check"><input type="checkbox" id="chk-day1" checked><span>前日</span></label>
-            <label class="day-check"><input type="checkbox" id="chk-day2"><span>2日前</span></label>
-            <label class="day-check"><input type="checkbox" id="chk-day3"><span>3日前</span></label>
-            <label class="day-check"><input type="checkbox" id="chk-day4"><span>4日前</span></label>
-          </div>
-        </div>
-
-        <!-- 連続下落+リバウンドなし -->
-        <div class="setting-row">
-          <label class="setting-check"><input type="checkbox" id="chk-decline" onchange="toggleDeclineUI()"><span class="checkmark"></span></label>
-          <span class="setting-label">連続下落+リバウンドなし</span>
-        </div>
-        <div class="decline-sub" id="decline-sub" style="display:none;">
-          <div class="decline-thresholds">
-            <div class="decline-th"><span>1日前</span><input type="number" id="val-dec-1" value="-1" max="0" step="0.1" class="setting-input"><span class="setting-unit">%</span></div>
-            <div class="decline-th"><span>2日前</span><input type="number" id="val-dec-2" value="-1" max="0" step="0.1" class="setting-input"><span class="setting-unit">%</span></div>
-            <div class="decline-th"><span>3日前</span><input type="number" id="val-dec-3" value="-2" max="0" step="0.1" class="setting-input"><span class="setting-unit">%</span></div>
-            <div class="decline-th"><span>4日前</span><input type="number" id="val-dec-4" value="-1" max="0" step="0.1" class="setting-input"><span class="setting-unit">%</span></div>
-          </div>
-          <div class="decline-th" style="margin-top:6px;">
-            <span>上髭許容</span>
-            <input type="number" id="val-dec-wick" value="30" min="0" max="100" step="1" class="setting-input">
-            <span class="setting-unit">%</span>
-          </div>
-        </div>
-
-        <!-- 累積下落+日中リバウンドなし -->
-        <div class="setting-row">
-          <label class="setting-check"><input type="checkbox" id="chk-cumdecline" onchange="toggleCumDeclineUI()"><span class="checkmark"></span></label>
-          <span class="setting-label">累積下落+リバウンドなし</span>
-        </div>
-        <div class="decline-sub" id="cumdecline-sub" style="display:none;">
-          <div class="decline-thresholds">
-            <div class="decline-th"><span>累積下落閾値</span><input type="number" id="val-cum-th" value="-3" max="0" step="0.5" class="setting-input"><span class="setting-unit">%</span></div>
-            <div class="decline-th"><span>対象日数</span><input type="number" id="val-cum-days" value="4" min="1" max="10" step="1" class="setting-input"><span class="setting-unit">日</span></div>
-            <div class="decline-th"><span>上髭許容</span><input type="number" id="val-cum-wick" value="30" min="0" max="100" step="1" class="setting-input"><span class="setting-unit">%</span></div>
-          </div>
         </div>
       </div>
     </div>
@@ -121,9 +67,11 @@
     <div id="result-body">
       <table class="result-table" id="result-table">
         <thead id="result-thead"><tr>
-          <th>銘柄</th><th>銘柄名</th><th style="text-align:right">時価総額</th>
+          <th>銘柄</th><th>銘柄名</th>
+          <th style="text-align:right">N日前終値</th>
           <th style="text-align:right">現在値</th>
-          <th style="text-align:right">前日比</th><th>検知内容</th>
+          <th style="text-align:right">累積騰落率</th>
+          <th style="text-align:right">最大上髭</th>
         </tr></thead>
         <tbody id="result-tbody"></tbody>
       </table>
@@ -148,7 +96,6 @@ const progressArea = document.getElementById("progress-area");
 const progressFill = document.getElementById("progress-fill");
 const progressText = document.getElementById("progress-text");
 const resultCard   = document.getElementById("result-card");
-const resultThead  = document.getElementById("result-thead");
 const resultTbody  = document.getElementById("result-tbody");
 const hitCount     = document.getElementById("hit-count");
 const chartArea    = document.getElementById("chart-area");
@@ -157,144 +104,33 @@ const chartTitle   = document.getElementById("chart-title");
 let pollTimer = null;
 let currentJobId = null;
 let currentCursor = 0;
-let activeCompareDays = [1];  // 現在のジョブの比較日リスト
-let activeDecline = false;    // 連続下落モード
-let activeCumDecline = false; // 累積下落モード
 
-const DAY_LABELS = { 1: "前日比", 2: "2日前比", 3: "3日前比", 4: "4日前比" };
-
-/* ── 条件設定 localStorage ────────────────────────── */
+/* ── 設定 localStorage ────────────────────────────── */
 const SETTINGS_KEY = "stock_screener_settings";
-const settingsFields = [
-  { chk: "chk-daily",   val: "val-daily",   key: "daily_change" },
-  { chk: "chk-extreme", val: "val-extreme",  key: "near_extreme" },
-  { chk: "chk-ma",      val: "val-ma",       key: "ma_deviation" },
-  { chk: "chk-sigma",   val: "val-sigma",    key: "anomaly_sigma" },
-];
-const dayCheckIds = ["chk-day1", "chk-day2", "chk-day3", "chk-day4"];
 
 function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
     if (!saved) return;
-    for (const f of settingsFields) {
-      if (saved[f.key]) {
-        document.getElementById(f.chk).checked = saved[f.key].enabled;
-        document.getElementById(f.val).value = saved[f.key].value;
-      }
-    }
-    if (saved.compare_days) {
-      dayCheckIds.forEach((id, i) => {
-        document.getElementById(id).checked = saved.compare_days.includes(i + 1);
-      });
-    }
-    if (saved.decline) {
-      document.getElementById("chk-decline").checked = saved.decline.enabled;
-      if (saved.decline.thresholds) {
-        for (let i = 0; i < 4; i++)
-          document.getElementById(`val-dec-${i+1}`).value = saved.decline.thresholds[i];
-      }
-      if (saved.decline.wick_pct != null)
-        document.getElementById("val-dec-wick").value = saved.decline.wick_pct;
-      toggleDeclineUI();
-    }
-    if (saved.cumulative_decline) {
-      document.getElementById("chk-cumdecline").checked = saved.cumulative_decline.enabled;
-      if (saved.cumulative_decline.threshold != null)
-        document.getElementById("val-cum-th").value = saved.cumulative_decline.threshold;
-      if (saved.cumulative_decline.days != null)
-        document.getElementById("val-cum-days").value = saved.cumulative_decline.days;
-      if (saved.cumulative_decline.wick_pct != null)
-        document.getElementById("val-cum-wick").value = saved.cumulative_decline.wick_pct;
-      toggleCumDeclineUI();
-    }
+    if (saved.threshold != null) document.getElementById("val-threshold").value = saved.threshold;
+    if (saved.days != null)      document.getElementById("val-days").value = saved.days;
+    if (saved.wick_pct != null)  document.getElementById("val-wick").value = saved.wick_pct;
   } catch {}
 }
 
 function saveSettings() {
-  const s = {};
-  for (const f of settingsFields) {
-    s[f.key] = {
-      enabled: document.getElementById(f.chk).checked,
-      value: parseFloat(document.getElementById(f.val).value),
-    };
-  }
-  const days = [];
-  dayCheckIds.forEach((id, i) => {
-    if (document.getElementById(id).checked) days.push(i + 1);
-  });
-  s.compare_days = days.length > 0 ? days : [1];
-
-  s.decline = {
-    enabled: document.getElementById("chk-decline").checked,
-    thresholds: [1,2,3,4].map(i => parseFloat(document.getElementById(`val-dec-${i}`).value)),
-    wick_pct: parseFloat(document.getElementById("val-dec-wick").value),
+  const s = {
+    threshold: parseFloat(document.getElementById("val-threshold").value),
+    days:      parseInt(document.getElementById("val-days").value),
+    wick_pct:  parseFloat(document.getElementById("val-wick").value),
   };
-
-  s.cumulative_decline = {
-    enabled: document.getElementById("chk-cumdecline").checked,
-    threshold: parseFloat(document.getElementById("val-cum-th").value),
-    days: parseInt(document.getElementById("val-cum-days").value),
-    wick_pct: parseFloat(document.getElementById("val-cum-wick").value),
-  };
-
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
   return s;
 }
 
-function toggleDeclineUI() {
-  const on = document.getElementById("chk-decline").checked;
-  document.getElementById("decline-sub").style.display = on ? "block" : "none";
-}
-
-function toggleCumDeclineUI() {
-  const on = document.getElementById("chk-cumdecline").checked;
-  document.getElementById("cumdecline-sub").style.display = on ? "block" : "none";
-}
-
-function toggleSettings() {
-  const body = document.getElementById("settings-body");
-  const arrow = document.getElementById("settings-toggle");
-  const open = body.style.display !== "none";
-  body.style.display = open ? "none" : "block";
-  arrow.textContent = open ? "\u25B6" : "\u25BC";
-}
-
-// 初期化: 設定読み込み
 loadSettings();
 
-function buildTableHeader(days, declineOn, cumDeclineOn) {
-  activeCompareDays = days;
-  activeDecline = !!declineOn;
-  activeCumDecline = !!cumDeclineOn;
-
-  if (activeCumDecline) {
-    resultThead.innerHTML = `<tr>
-      <th>銘柄</th><th>銘柄名</th>
-      <th style="text-align:right">N日前終値</th><th style="text-align:right">現在値</th>
-      <th style="text-align:right">累積騰落率</th><th style="text-align:right">最大上髭</th>
-      <th>検知内容</th>
-    </tr>`;
-  } else if (activeDecline) {
-    resultThead.innerHTML = `<tr>
-      <th>銘柄</th><th>銘柄名</th><th style="text-align:right">現在値</th>
-      <th style="text-align:right">1日前</th><th style="text-align:right">2日前</th>
-      <th style="text-align:right">3日前</th><th style="text-align:right">4日前</th>
-      <th style="text-align:right">髭1日</th><th style="text-align:right">髭2日</th>
-      <th style="text-align:right">髭3日</th><th style="text-align:right">髭4日</th>
-      <th>検知内容</th>
-    </tr>`;
-  } else {
-    const changeCols = days.map(d =>
-      `<th style="text-align:right">${DAY_LABELS[d] || d + "日前比"}</th>`
-    ).join("");
-    resultThead.innerHTML = `<tr>
-      <th>銘柄</th><th>銘柄名</th><th style="text-align:right">時価総額</th>
-      <th style="text-align:right">現在値</th>${changeCols}<th>検知内容</th>
-    </tr>`;
-  }
-}
-
+/* ── ユーティリティ ───────────────────────────────── */
 function setStatus(html) { statusBar.innerHTML = html; }
 
 function updateProgress(processed, total, hits, message) {
@@ -310,7 +146,9 @@ function stopPolling() {
   currentCursor = 0;
 }
 
-/* ── スクリーニング実行 ────────────────────────── */
+function displayCode(ticker) { return ticker.replace(/\.T$/, ""); }
+
+/* ── スクリーニング実行 ──────────────────────────── */
 async function runScreen() {
   stopPolling();
 
@@ -328,7 +166,6 @@ async function runScreen() {
 
   try {
     const settings = saveSettings();
-    buildTableHeader(settings.compare_days, settings.decline.enabled, settings.cumulative_decline.enabled);
     const res = await fetch("/api/screen/start", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -344,8 +181,6 @@ async function runScreen() {
 
     currentJobId = data.job_id;
     currentCursor = 0;
-
-    // 1秒ごとにポーリング
     pollTimer = setInterval(() => pollProgress(currentJobId), 1000);
 
   } catch (e) {
@@ -355,7 +190,7 @@ async function runScreen() {
   }
 }
 
-/* ── ポーリング ────────────────────────────────── */
+/* ── ポーリング ──────────────────────────────────── */
 async function pollProgress(jobId) {
   if (jobId !== currentJobId) return;
 
@@ -374,27 +209,19 @@ async function pollProgress(jobId) {
       return;
     }
 
-    // サーバーからテーブル設定を受け取ってヘッダー同期
-    if (d.compare_days) buildTableHeader(d.compare_days, d.decline_enabled, d.cum_decline_enabled);
-
-    // 進捗更新
     if (d.total > 0) {
       updateProgress(d.processed, d.total, d.hits, d.message);
     } else {
       progressText.textContent = d.message || "準備中...";
     }
 
-    // 新しい結果があれば追加
     if (d.new_results.length > 0) {
       resultCard.style.display = "block";
       hitCount.textContent = `${d.hits} 件`;
-      for (const r of d.new_results) {
-        appendRow(r);
-      }
+      for (const r of d.new_results) appendRow(r);
       currentCursor = d.cursor;
     }
 
-    // 完了 or エラー
     if (d.status === "done") {
       stopPolling();
       screenBtn.disabled = false;
@@ -402,15 +229,12 @@ async function pollProgress(jobId) {
       progressFill.style.width = "100%";
       progressText.textContent =
         `完了 — ${d.processed.toLocaleString()} 銘柄処理 / ${d.hits} 件検知`;
-      setStatus(
-        `<span class="dot ok"></span> スクリーニング完了: ${d.hits} 件検知`
-      );
+      setStatus(`<span class="dot ok"></span> スクリーニング完了: ${d.hits} 件検知`);
       hitCount.textContent = `${d.hits} 件`;
       if (d.hits === 0) {
         resultCard.style.display = "block";
-        const cols = activeCumDecline ? 7 : activeDecline ? 12 : (4 + activeCompareDays.length + 1);
         resultTbody.innerHTML =
-          `<tr><td colspan="${cols}" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>`;
+          '<tr><td colspan="6" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
       }
     } else if (d.status === "lost") {
       stopPolling();
@@ -434,65 +258,24 @@ async function pollProgress(jobId) {
   }
 }
 
-/* ── 表示用コード (「.T」を除去) ────────────────── */
-function displayCode(ticker) { return ticker.replace(/\.T$/, ""); }
-
-/* ── 結果行の追加 ─────────────────────────────── */
-function fmtChange(pct) {
-  if (pct == null) return '<td class="change">-</td>';
-  const dir = pct >= 0 ? "up" : "down";
-  const sign = pct >= 0 ? "+" : "";
-  return `<td class="change ${dir}">${sign}${pct.toFixed(1)}%</td>`;
-}
-
-function fmtWick(val) {
-  if (val == null) return '<td class="price">-</td>';
-  return `<td class="price">${val.toFixed(1)}%</td>`;
-}
-
+/* ── 結果行の追加 ─────────────────────────────────── */
 function appendRow(r) {
-  const alertsHtml = r.alerts.map(a =>
-    `<span class="alert-tag ${a.type}">${a.text}</span>`
-  ).join("");
-
-  let midCols;
-  if (activeCumDecline) {
-    const cd = r.cum_detail || {};
-    const refClose = cd.ref_close != null ? cd.ref_close.toLocaleString("ja-JP", {maximumFractionDigits:1}) : "-";
-    midCols = `
-      <td class="price">${refClose}</td>
-      <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
-      ${fmtChange(cd.cum_change != null ? cd.cum_change : null)}
-      ${fmtWick(cd.max_wick != null ? cd.max_wick : null)}`;
-  } else if (activeDecline) {
-    const dd = r.decline_detail || [null,null,null,null];
-    const chgCells = [0,1,2,3].map(i => fmtChange(dd[i] ? dd[i].change : null)).join("");
-    const wickCells = [0,1,2,3].map(i => fmtWick(dd[i] ? dd[i].wick : null)).join("");
-    midCols = `
-      <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
-      ${chgCells}${wickCells}`;
-  } else {
-    const changeCells = activeCompareDays.map(d => {
-      const pct = r.changes ? r.changes[String(d)] : (d === 1 ? r.change_pct : null);
-      return fmtChange(pct);
-    }).join("");
-    midCols = `
-      <td class="price">${r.market_cap}</td>
-      <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
-      ${changeCells}`;
-  }
+  const chgDir = r.cum_change >= 0 ? "up" : "down";
+  const chgSign = r.cum_change >= 0 ? "+" : "";
 
   const tr = document.createElement("tr");
   tr.innerHTML = `
     <td><a class="ticker-link" onclick="showChart('${r.ticker}')">${displayCode(r.ticker)}</a></td>
     <td>${r.name}</td>
-    ${midCols}
-    <td>${alertsHtml}</td>
+    <td class="price">${r.ref_close.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
+    <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
+    <td class="change ${chgDir}">${chgSign}${r.cum_change.toFixed(1)}%</td>
+    <td class="price">${r.max_wick.toFixed(1)}%</td>
   `;
   resultTbody.appendChild(tr);
 }
 
-/* ── チャート ──────────────────────────────────── */
+/* ── チャート ─────────────────────────────────────── */
 async function showChart(ticker) {
   chartArea.classList.add("visible");
   const code = displayCode(ticker);

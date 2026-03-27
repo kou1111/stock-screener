@@ -11,7 +11,6 @@
   --red:      #f85149;
   --blue:     #58a6ff;
   --green:    #3fb950;
-  --orange:   #d29922;
 }
 
 body {
@@ -23,7 +22,7 @@ body {
 
 /* ── レイアウト ────────────────────────────────── */
 .container {
-  max-width: 1100px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 24px 20px;
 }
@@ -72,38 +71,6 @@ header .badge-auto {
   margin-bottom: 12px;
 }
 
-/* ── 銘柄管理エリア ────────────────────────────── */
-.ticker-area {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.ticker-area textarea {
-  flex: 1;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-family: "Consolas", "Monaco", monospace;
-  font-size: 13px;
-  padding: 10px 12px;
-  resize: vertical;
-  min-height: 100px;
-  transition: border-color 0.2s;
-}
-
-.ticker-area textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.btn-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 /* ── ボタン ────────────────────────────────────── */
 .btn {
   display: inline-flex;
@@ -131,12 +98,6 @@ header .badge-auto {
   cursor: not-allowed;
   filter: none;
 }
-
-.btn-secondary {
-  background: var(--surface);
-  color: var(--text);
-}
-.btn-secondary:hover { background: var(--border); }
 
 /* ── ステータス ────────────────────────────────── */
 .status-bar {
@@ -200,6 +161,51 @@ header .badge-auto {
   margin-left: 8px;
 }
 
+/* ── 条件設定 ─────────────────────────────────── */
+.settings-section {
+  margin-bottom: 16px;
+}
+.settings-body {
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+.setting-row + .setting-row {
+  border-top: 1px solid var(--border);
+}
+.setting-label {
+  font-size: 13px;
+  color: var(--text);
+  min-width: 100px;
+}
+.setting-input {
+  width: 70px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: monospace;
+  padding: 4px 8px;
+  text-align: right;
+}
+.setting-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.setting-unit {
+  font-size: 13px;
+  color: var(--muted);
+  min-width: 16px;
+}
+
 /* ── 結果テーブル ──────────────────────────────── */
 .result-table {
   width: 100%;
@@ -246,23 +252,6 @@ header .badge-auto {
 .change.up   { color: var(--red); }
 .change.down { color: var(--blue); }
 
-.alert-tag {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  margin: 2px 4px 2px 0;
-}
-.alert-tag.up      { background: rgba(248, 81, 73, 0.15); color: var(--red); }
-.alert-tag.down    { background: rgba(88, 166, 255, 0.15); color: var(--blue); }
-.alert-tag.selloff {
-  background: linear-gradient(135deg, rgba(248, 81, 73, 0.25), rgba(210, 153, 34, 0.18));
-  color: #ff6b6b;
-  border: 1px solid rgba(248, 81, 73, 0.3);
-  font-weight: 600;
-}
-
 .empty-state {
   text-align: center;
   padding: 40px 20px;
@@ -299,172 +288,8 @@ header .badge-auto {
   overflow: hidden;
 }
 
-/* ── 条件設定 ─────────────────────────────────── */
-.settings-section {
-  margin-bottom: 16px;
-}
-.settings-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--muted);
-  font-weight: 500;
-  user-select: none;
-  padding: 4px 0;
-}
-.settings-header:hover { color: var(--text); }
-.settings-toggle {
-  font-size: 10px;
-  width: 14px;
-  text-align: center;
-}
-.settings-body {
-  display: block;
-  margin-top: 10px;
-  padding: 12px 14px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.setting-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-}
-.setting-row + .setting-row {
-  border-top: 1px solid var(--border);
-}
-.setting-check {
-  position: relative;
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-}
-.setting-check input {
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border: 1.5px solid var(--border);
-  border-radius: 3px;
-  background: var(--surface);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.setting-check input:checked {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.setting-check input:checked::after {
-  content: "";
-  position: absolute;
-  left: 5px;
-  top: 2px;
-  width: 4px;
-  height: 8px;
-  border: solid #000;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
-.setting-label {
-  font-size: 13px;
-  color: var(--text);
-  min-width: 100px;
-}
-.setting-input {
-  width: 70px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text);
-  font-size: 13px;
-  font-family: monospace;
-  padding: 4px 8px;
-  text-align: right;
-}
-.setting-input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-.setting-unit {
-  font-size: 13px;
-  color: var(--muted);
-  min-width: 16px;
-}
-.setting-row-days {
-  padding-top: 8px;
-}
-.day-checks {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-.day-check {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text);
-}
-.day-check input {
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid var(--border);
-  border-radius: 3px;
-  background: var(--surface);
-  cursor: pointer;
-  transition: all 0.15s;
-  position: relative;
-}
-.day-check input:checked {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.day-check input:checked::after {
-  content: "";
-  position: absolute;
-  left: 4px;
-  top: 1px;
-  width: 4px;
-  height: 7px;
-  border: solid #000;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
-
-/* ── 連続下落サブ設定 ─────────────────────────── */
-.decline-sub {
-  margin-left: 26px;
-  margin-top: 6px;
-  padding: 10px 12px;
-  background: rgba(88, 166, 255, 0.04);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
-.decline-thresholds {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.decline-th {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--text);
-}
-.decline-th .setting-input {
-  width: 60px;
-}
-
 /* ── レスポンシブ ──────────────────────────────── */
 @media (max-width: 640px) {
-  .ticker-area { flex-direction: column; }
-  .btn-group { flex-direction: row; }
   .result-table { font-size: 12px; }
   .result-table th, .result-table td { padding: 8px 6px; }
 }

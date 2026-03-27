@@ -1,7 +1,7 @@
 """
-日本株スクリーニング Web アプリ
+日本株スクリーニング Web アプリ — 累積下落＋リバウンドなし検知
 Flask + yfinance + Plotly
-JPX上場銘柄一覧から自動取得 → 2段階スクリーニング
+JPX上場銘柄一覧から自動取得 → 時価総額70億円以上を対象
 バックグラウンドジョブ + ポーリング (Render 30秒タイムアウト対策)
 ジョブ状態はファイルに永続化 (インスタンス再起動対策)
 """
@@ -9,7 +9,6 @@ JPX上場銘柄一覧から自動取得 → 2段階スクリーニング
 import io
 import json
 import logging
-import os
 import tempfile
 import threading
 import uuid
@@ -33,14 +32,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 JPX_URL = "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls"
 MIN_MARKET_CAP = 7_000_000_000  # 70億円
 MAX_WORKERS = 50
-
-DAILY_CHANGE_THRESHOLD = 3.0
-NEAR_EXTREME_PCT = 5.0
-MA_PERIOD = 25
-MA_DEVIATION_THRESHOLD = 5.0
-ANOMALY_SIGMA = 2.0
 LOOKBACK_DAYS = 60
 
+# チャート用: 一方的下落検知パラメータ
 SELLOFF_VOLATILITY_MULT = 1.5
 SELLOFF_BOUNCE_RATIO = 0.30
 SELLOFF_TAIL_BARS = 5
@@ -53,12 +47,10 @@ JOBS_DIR = Path(tempfile.gettempdir()) / "stock_screener_jobs"
 JOBS_DIR.mkdir(exist_ok=True)
 
 _jobs_lock = threading.Lock()
-# インメモリキャッシュ (実行中のジョブのみ高速アクセス用)
 _jobs_mem: dict[str, dict] = {}
 
 
 def _job_path(job_id: str) -> Path:
-    # job_id は hex のみなので安全
     return JOBS_DIR / f"{job_id}.json"
 
 
@@ -67,7 +59,7 @@ def _save_job(job_id: str, data: dict):
     path = _job_path(job_id)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(path)  # atomic on POSIX; best-effort on Windows
+    tmp.replace(path)
 
 
 def _new_job() -> str:
@@ -91,12 +83,10 @@ def _get_job(job_id: str) -> dict | None:
     with _jobs_lock:
         if job_id in _jobs_mem:
             return _jobs_mem[job_id]
-    # メモリに無い場合はファイルから復元 (再起動後)
     path = _job_path(job_id)
     if path.exists():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            # 実行中だったジョブはサーバー再起動で死んでいる
             if data["status"] in ("starting", "running"):
                 data["status"] = "lost"
                 data["message"] = "サーバーが再起動されたためジョブが中断されました"
@@ -131,7 +121,7 @@ def _increment_processed(job_id: str):
 
 
 def _flush_job(job_id: str):
-    """現在のメモリ状態をファイルに書き出す (重い処理中は間引いて呼ぶ)"""
+    """現在のメモリ状態をファイルに書き出す"""
     with _jobs_lock:
         if job_id in _jobs_mem:
             data = _jobs_mem[job_id].copy()
@@ -153,12 +143,8 @@ def fetch_jpx_tickers() -> list[str]:
     ]
 
     total_rows = len(df)
-
-    # ETF / REIT / PRO Market を除外
     stocks = df[~df["market"].str.contains("ETF|REIT|PRO", na=False)].copy()
     after_etf = len(stocks)
-
-    # プライム市場のみに絞る (時価総額70億円以上の銘柄はほぼプライム市場)
     stocks = stocks[stocks["market"].str.contains("プライム", na=False)]
     after_prime = len(stocks)
 
@@ -189,72 +175,21 @@ def get_ticker_name(ticker: str) -> str:
         return ticker
 
 
-# ── デフォルト条件設定 ─────────────────────────────
-DEFAULT_SETTINGS = {
-    "daily_change":  {"enabled": True, "value": DAILY_CHANGE_THRESHOLD},
-    "near_extreme":  {"enabled": True, "value": NEAR_EXTREME_PCT},
-    "ma_deviation":  {"enabled": True, "value": MA_DEVIATION_THRESHOLD},
-    "anomaly_sigma": {"enabled": True, "value": ANOMALY_SIGMA},
-}
-
-
+# ── 設定パース ────────────────────────────────────
 def _parse_settings(raw: dict | None) -> dict:
-    """フロントから送られた設定をマージ (不足分はデフォルト補完)"""
-    s = {}
-    for key, default in DEFAULT_SETTINGS.items():
-        if raw and key in raw:
-            s[key] = {
-                "enabled": bool(raw[key].get("enabled", default["enabled"])),
-                "value":   float(raw[key].get("value", default["value"])),
-            }
-        else:
-            s[key] = default.copy()
-
-    # 比較対象日 (営業日ベース): [1] = 前日のみ, [1,2,3] = 前日+2日前+3日前
-    if raw and "compare_days" in raw:
-        days = [int(d) for d in raw["compare_days"] if int(d) in (1, 2, 3, 4)]
-        s["compare_days"] = sorted(days) if days else [1]
-    else:
-        s["compare_days"] = [1]
-
-    # 連続下落+リバウンドなし
-    if raw and "decline" in raw:
-        d = raw["decline"]
-        th_raw = d.get("thresholds", [-1, -1, -2, -1])
-        s["decline"] = {
-            "enabled": bool(d.get("enabled", False)),
-            "thresholds": [float(th_raw[i]) for i in range(4)],
-            "wick_pct": float(d.get("wick_pct", 30)),
-        }
-    else:
-        s["decline"] = {
-            "enabled": False,
-            "thresholds": [-1.0, -1.0, -2.0, -1.0],
-            "wick_pct": 30.0,
-        }
-
-    # 累積下落+日中リバウンドなし
-    if raw and "cumulative_decline" in raw:
-        cd = raw["cumulative_decline"]
-        s["cumulative_decline"] = {
-            "enabled": bool(cd.get("enabled", False)),
-            "threshold": float(cd.get("threshold", -3)),
-            "days": max(1, min(10, int(cd.get("days", 4)))),
-            "wick_pct": float(cd.get("wick_pct", 30)),
-        }
-    else:
-        s["cumulative_decline"] = {
-            "enabled": False,
-            "threshold": -3.0,
-            "days": 4,
-            "wick_pct": 30.0,
-        }
-
-    return s
+    defaults = {"threshold": -3.0, "days": 4, "wick_pct": 30.0}
+    if not raw:
+        return defaults
+    return {
+        "threshold": float(raw.get("threshold", defaults["threshold"])),
+        "days": max(1, min(10, int(raw.get("days", defaults["days"])))),
+        "wick_pct": float(raw.get("wick_pct", defaults["wick_pct"])),
+    }
 
 
-# ── 1銘柄の日足スクリーニング ──────────────────────
+# ── 1銘柄のスクリーニング ─────────────────────────
 def screen_worker(ticker: str, settings: dict) -> dict | None:
+    """累積下落＋日中リバウンドなし判定"""
     try:
         tk = yf.Ticker(ticker)
 
@@ -265,179 +200,53 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
         if mcap < MIN_MARKET_CAP:
             return None
 
+        n_days = settings["days"]
         end = datetime.now()
         start = end - timedelta(days=LOOKBACK_DAYS)
         df = tk.history(start=start, end=end, auto_adjust=True)
         if df.empty:
             return None
         df = df.dropna(subset=["Close"])
-        close = df["Close"].values.flatten()
-        if len(close) < MA_PERIOD + 1:
+        if len(df) < n_days + 1:
             return None
 
-        current = float(close[-1])
+        current = float(df["Close"].iloc[-1])
+        ref_close = float(df["Close"].iloc[-(n_days + 1)])
+        cum_change = (current - ref_close) / ref_close * 100
 
-        # 複数営業日の騰落率を計算 (日足データのインデックスで遡る)
-        compare_days = settings.get("compare_days", [1])
-        max_day = max(compare_days)
-        if len(close) < max_day + 1:
+        threshold = settings["threshold"]
+        wick_tol = settings["wick_pct"]
+
+        # 期間中の各日の上髭を計算
+        max_wick = 0.0
+        wick_ok = True
+        for i in range(n_days):
+            d_idx = -(n_days - i)  # 古い日 → 新しい日の順
+            o = float(df["Open"].iloc[d_idx])
+            h = float(df["High"].iloc[d_idx])
+            l = float(df["Low"].iloc[d_idx])
+            c = float(df["Close"].iloc[d_idx])
+            upper_wick = h - max(o, c)
+            day_range = h - l
+            wick = (upper_wick / day_range * 100) if day_range > 0 else 0.0
+            if wick > max_wick:
+                max_wick = wick
+            if wick > wick_tol:
+                wick_ok = False
+
+        # 累積下落率が閾値以下 かつ 全日の上髭が許容値以下
+        if cum_change > threshold or not wick_ok:
             return None
 
-        changes: dict[int, float] = {}
-        for d in compare_days:
-            ref = float(close[-(d + 1)])
-            changes[d] = (current - ref) / ref * 100
-
-        change_pct = changes.get(1, 0.0)  # 前日比 (他条件でも使用)
-
-        ytd_high = float(np.max(close))
-        ytd_low = float(np.min(close))
-
-        ma25 = float(np.mean(close[-MA_PERIOD:]))
-        ma_dev = (current - ma25) / ma25 * 100
-
-        returns_30d = np.diff(close[-31:]) / close[-31:-1] * 100
-        std_30d = float(np.std(returns_30d))
-
-        alerts = []
-
-        # 前日比条件: いずれかの比較日が閾値を超えれば検知
-        sc = settings["daily_change"]
-        if sc["enabled"]:
-            for d, pct in changes.items():
-                if abs(pct) >= sc["value"]:
-                    label = "前日比" if d == 1 else f"{d}日前比"
-                    tag = "急騰" if pct > 0 else "急落"
-                    alerts.append({
-                        "text": f"{tag} {label} {pct:+.1f}%",
-                        "type": "up" if pct > 0 else "down",
-                    })
-
-        sc = settings["near_extreme"]
-        if sc["enabled"]:
-            if ytd_high > 0:
-                d = (ytd_high - current) / ytd_high * 100
-                if d <= sc["value"]:
-                    alerts.append({"text": f"高値圏 (高値比 -{d:.1f}%)", "type": "up"})
-            if ytd_low > 0:
-                d = (current - ytd_low) / ytd_low * 100
-                if d <= sc["value"]:
-                    alerts.append({"text": f"安値圏 (安値比 +{d:.1f}%)", "type": "down"})
-
-        sc = settings["ma_deviation"]
-        if sc["enabled"] and abs(ma_dev) >= sc["value"]:
-            alerts.append({
-                "text": f"MA{MA_PERIOD}乖離 {ma_dev:+.1f}%",
-                "type": "up" if ma_dev > 0 else "down",
-            })
-
-        sc = settings["anomaly_sigma"]
-        if sc["enabled"] and std_30d > 0 and abs(change_pct) >= std_30d * sc["value"]:
-            alerts.append({
-                "text": f"統計異常 ({change_pct:+.1f}% / {sc['value']:.0f}σ={std_30d * sc['value']:.1f}%)",
-                "type": "up" if change_pct > 0 else "down",
-            })
-
-        # ── 連続下落+リバウンドなし ──
-        decline_detail = None
-        sc_dec = settings.get("decline", {})
-        if sc_dec.get("enabled") and len(df) >= 5:
-            thresholds = sc_dec.get("thresholds", [-1, -1, -2, -1])
-            wick_tol = sc_dec.get("wick_pct", 30.0)
-
-            detail = []
-            all_met = True
-            for i in range(4):
-                d_idx = -(i + 1)  # -1, -2, -3, -4
-                c_now = float(df["Close"].iloc[d_idx])
-                c_prev = float(df["Close"].iloc[d_idx - 1])
-                day_chg = (c_now - c_prev) / c_prev * 100
-
-                o = float(df["Open"].iloc[d_idx])
-                h = float(df["High"].iloc[d_idx])
-                l = float(df["Low"].iloc[d_idx])
-                c = float(df["Close"].iloc[d_idx])
-
-                upper_wick = h - max(o, c)
-                day_range = h - l
-                wick = (upper_wick / day_range * 100) if day_range > 0 else 0.0
-
-                detail.append({"change": round(day_chg, 2), "wick": round(wick, 1)})
-
-                if day_chg > thresholds[i]:
-                    all_met = False
-                if wick > wick_tol:
-                    all_met = False
-
-            decline_detail = detail
-            if all_met:
-                alerts.append({
-                    "text": "連続下落(リバウンドなし)",
-                    "type": "down",
-                })
-
-        # ── 累積下落+日中リバウンドなし ──
-        cum_detail = None
-        sc_cum = settings.get("cumulative_decline", {})
-        if sc_cum.get("enabled"):
-            n_days = sc_cum.get("days", 4)
-            if len(df) >= n_days + 1:
-                cum_threshold = sc_cum.get("threshold", -3.0)
-                cum_wick_tol = sc_cum.get("wick_pct", 30.0)
-
-                ref_close = float(df["Close"].iloc[-(n_days + 1)])
-                cum_change = (current - ref_close) / ref_close * 100
-
-                # 期間中の各日の上髭を計算し最大値を取得
-                max_wick = 0.0
-                wick_ok = True
-                for i in range(n_days):
-                    d_idx = -(n_days - i)  # 古い日 → 新しい日の順
-                    o = float(df["Open"].iloc[d_idx])
-                    h = float(df["High"].iloc[d_idx])
-                    l = float(df["Low"].iloc[d_idx])
-                    c = float(df["Close"].iloc[d_idx])
-                    upper_wick = h - max(o, c)
-                    day_range = h - l
-                    wick = (upper_wick / day_range * 100) if day_range > 0 else 0.0
-                    if wick > max_wick:
-                        max_wick = wick
-                    if wick > cum_wick_tol:
-                        wick_ok = False
-
-                cum_detail = {
-                    "ref_close": round(ref_close, 1),
-                    "cum_change": round(cum_change, 2),
-                    "max_wick": round(max_wick, 1),
-                    "days": n_days,
-                }
-
-                if cum_change <= cum_threshold and wick_ok:
-                    alerts.append({
-                        "text": f"累積下落{n_days}日 {cum_change:+.1f}%",
-                        "type": "down",
-                    })
-
-        if not alerts:
-            return None
-
-        mcap_b = mcap / 1e8
         name = get_ticker_name(ticker)
-
-        result = {
+        return {
             "ticker": ticker,
             "name": name,
             "price": round(current, 1),
-            "change_pct": round(change_pct, 2),
-            "changes": {str(d): round(pct, 2) for d, pct in changes.items()},
-            "market_cap": f"{mcap_b:,.0f}億",
-            "alerts": alerts,
+            "ref_close": round(ref_close, 1),
+            "cum_change": round(cum_change, 2),
+            "max_wick": round(max_wick, 1),
         }
-        if decline_detail is not None:
-            result["decline_detail"] = decline_detail
-        if cum_detail is not None:
-            result["cum_detail"] = cum_detail
-        return result
 
     except Exception:
         return None
@@ -452,13 +261,10 @@ def _run_screening(job_id: str, settings: dict):
         return
 
     total = len(tickers)
-    sc_cum = settings.get("cumulative_decline", {})
-    if sc_cum.get("enabled"):
-        logging.info(
-            "累積下落条件: 閾値=%s%%, 日数=%s, 上髭=%s%%",
-            sc_cum.get("threshold"), sc_cum.get("days"), sc_cum.get("wick_pct"),
-        )
-    logging.info("スクリーニング開始: %d 銘柄", total)
+    logging.info(
+        "スクリーニング開始: %d 銘柄 (閾値=%s%%, 日数=%s, 上髭=%s%%)",
+        total, settings["threshold"], settings["days"], settings["wick_pct"],
+    )
     _update_job(job_id, status="running", total=total, processed=0,
                 message="スクリーニング中...")
 
@@ -481,7 +287,7 @@ def _run_screening(job_id: str, settings: dict):
     _update_job(job_id, status="done", message="完了")
 
 
-# ── 一方的下落の検知 ──────────────────────────────
+# ── 一方的下落の検知 (チャート用) ─────────────────
 def detect_selloff(ticker: str) -> dict | None:
     try:
         tk = yf.Ticker(ticker)
@@ -650,11 +456,6 @@ def api_screen_start():
     raw = request.get_json(silent=True) or {}
     settings = _parse_settings(raw.get("settings"))
     job_id = _new_job()
-    # フロントがテーブルヘッダーを構築するための情報をジョブに保存
-    _update_job(job_id,
-                compare_days=settings["compare_days"],
-                decline_enabled=settings["decline"]["enabled"],
-                cum_decline_enabled=settings["cumulative_decline"]["enabled"])
     t = threading.Thread(target=_run_screening, args=(job_id, settings), daemon=True)
     t.start()
     return jsonify({"ok": True, "job_id": job_id})
@@ -682,9 +483,6 @@ def api_screen_poll(job_id):
         "hits": job["hits"],
         "new_results": new_results,
         "cursor": new_cursor,
-        "compare_days": job.get("compare_days", [1]),
-        "decline_enabled": job.get("decline_enabled", False),
-        "cum_decline_enabled": job.get("cum_decline_enabled", False),
     })
 
 
