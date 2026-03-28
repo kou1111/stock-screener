@@ -43,9 +43,15 @@
       </div>
     </div>
 
-    <button class="btn btn-primary" id="screen-btn" onclick="runScreen()">
-      スクリーニング実行
-    </button>
+    <div class="btn-actions">
+      <button class="btn btn-primary" id="screen-btn" onclick="runScreen()">
+        スクリーニング実行
+      </button>
+      <button class="btn" id="fresh-btn" style="display:none;" onclick="runScreen(false, true)">
+        最初からやり直す
+      </button>
+    </div>
+    <div class="resume-info" id="resume-info" style="display:none;"></div>
 
     <!-- 進捗バー -->
     <div id="progress-area" style="display:none;">
@@ -92,6 +98,8 @@
 
 <script>
 const screenBtn    = document.getElementById("screen-btn");
+const freshBtn     = document.getElementById("fresh-btn");
+const resumeInfo   = document.getElementById("resume-info");
 const statusBar    = document.getElementById("status-bar");
 const progressArea = document.getElementById("progress-area");
 const progressFill = document.getElementById("progress-fill");
@@ -133,6 +141,28 @@ function saveSettings() {
 
 loadSettings();
 
+/* ── 中断データチェック ───────────────────────────── */
+async function checkProgress() {
+  try {
+    const res = await fetch("/api/progress/check");
+    const d = await res.json();
+    if (d.ok && d.has_progress) {
+      screenBtn.textContent = "続きから再開";
+      freshBtn.style.display = "inline-flex";
+      resumeInfo.style.display = "block";
+      resumeInfo.textContent =
+        `前回の中断データあり: ${d.processed.toLocaleString()}/${d.total.toLocaleString()} 銘柄処理済み（${d.hits}件検知）`;
+    }
+  } catch {}
+}
+
+function hideResumeUI() {
+  freshBtn.style.display = "none";
+  resumeInfo.style.display = "none";
+}
+
+checkProgress();
+
 /* ── ユーティリティ ───────────────────────────────── */
 function setStatus(html) { statusBar.innerHTML = html; }
 
@@ -152,13 +182,14 @@ function stopPolling() {
 function displayCode(ticker) { return ticker.replace(/\.T$/, ""); }
 
 /* ── スクリーニング実行 ──────────────────────────── */
-async function runScreen(isAutoRetry) {
+async function runScreen(isAutoRetry, fresh) {
   stopPolling();
 
   if (!isAutoRetry) autoRetryCount = 0;
 
   screenBtn.disabled = true;
   screenBtn.textContent = isAutoRetry ? "自動再実行中..." : "実行中...";
+  hideResumeUI();
   resultCard.style.display = "none";
   resultTbody.innerHTML = "";
   hitCount.textContent = "";
@@ -166,7 +197,7 @@ async function runScreen(isAutoRetry) {
 
   progressArea.style.display = "block";
   progressFill.style.width = "0%";
-  progressText.textContent = "JPX銘柄一覧を取得中...";
+  progressText.textContent = fresh ? "最初からやり直しています..." : "JPX銘柄一覧を取得中...";
   setStatus('<span class="spinner"></span> 初期化中...');
 
   try {
@@ -174,7 +205,7 @@ async function runScreen(isAutoRetry) {
     const res = await fetch("/api/screen/start", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({settings}),
+      body: JSON.stringify({settings, fresh: !!fresh}),
     });
     const data = await res.json();
     if (!data.ok) {
@@ -182,6 +213,10 @@ async function runScreen(isAutoRetry) {
       screenBtn.disabled = false;
       screenBtn.textContent = "スクリーニング実行";
       return;
+    }
+
+    if (data.resumed) {
+      setStatus('<span class="spinner"></span> 前回の続きから再開中...');
     }
 
     currentJobId = data.job_id;

@@ -45,6 +45,7 @@ _jpx_names: dict[str, str] = {}
 # ── ファイルベース ジョブ管理 ──────────────────────
 JOBS_DIR = Path(tempfile.gettempdir()) / "stock_screener_jobs"
 JOBS_DIR.mkdir(exist_ok=True)
+PROGRESS_FILE = JOBS_DIR / "progress.json"
 
 _jobs_lock = threading.Lock()
 _jobs_mem: dict[str, dict] = {}
@@ -126,6 +127,36 @@ def _flush_job(job_id: str):
         if job_id in _jobs_mem:
             data = _jobs_mem[job_id].copy()
     _save_job(job_id, data)
+
+
+# ── 中断再開用プログレス管理 ──────────────────────
+def _save_progress(settings: dict, tickers: list[str],
+                   processed: list[str], results: list[dict]):
+    data = {
+        "settings": settings,
+        "tickers": tickers,
+        "processed": processed,
+        "results": results,
+    }
+    tmp = PROGRESS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(PROGRESS_FILE)
+
+
+def _load_progress() -> dict | None:
+    if not PROGRESS_FILE.exists():
+        return None
+    try:
+        return json.loads(PROGRESS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, KeyError):
+        return None
+
+
+def _delete_progress():
+    try:
+        PROGRESS_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 # ── JPX 銘柄一覧取得 ──────────────────────────────
@@ -256,33 +287,63 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
 
 
 # ── バックグラウンドスクリーニング処理 ────────────
-def _run_screening(job_id: str, settings: dict):
-    try:
-        tickers = fetch_jpx_tickers()
-    except Exception as e:
-        _update_job(job_id, status="error", message=f"JPX一覧の取得に失敗: {e}")
-        return
+def _run_screening(job_id: str, settings: dict, resume_data: dict | None = None):
+    if resume_data:
+        tickers = resume_data["tickers"]
+        processed_set = set(resume_data["processed"])
+        prev_results = resume_data["results"]
+        logging.info(
+            "スクリーニング再開: %d 銘柄中 %d 処理済み (%d 件検知済み)",
+            len(tickers), len(processed_set), len(prev_results),
+        )
+    else:
+        try:
+            tickers = fetch_jpx_tickers()
+        except Exception as e:
+            _update_job(job_id, status="error", message=f"JPX一覧の取得に失敗: {e}")
+            return
+        processed_set = set()
+        prev_results = []
+        logging.info(
+            "スクリーニング開始: %d 銘柄 (閾値=%s%%, 日数=%s, 上髭=%s%%)",
+            len(tickers), settings["threshold"], settings["days"], settings["wick_pct"],
+        )
 
     total = len(tickers)
-    logging.info(
-        "スクリーニング開始: %d 銘柄 (閾値=%s%%, 日数=%s, 上髭=%s%%)",
-        total, settings["threshold"], settings["days"], settings["wick_pct"],
-    )
-    _update_job(job_id, status="running", total=total, processed=0,
-                message="スクリーニング中...")
+    remaining = [t for t in tickers if t not in processed_set]
+
+    # ジョブ状態を再開データで初期化
+    with _jobs_lock:
+        if job_id in _jobs_mem:
+            _jobs_mem[job_id]["results"] = list(prev_results)
+            _jobs_mem[job_id]["hits"] = len(prev_results)
+
+    _update_job(job_id, status="running", total=total,
+                processed=total - len(remaining), message="スクリーニング中...")
+
+    # 進捗を保存 (新規開始時は tickers リストを記録)
+    processed_list = list(processed_set)
+    results_list = list(prev_results)
+    _save_progress(settings, tickers, processed_list, results_list)
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(screen_worker, t, settings): t for t in tickers}
+        futures = {executor.submit(screen_worker, t, settings): t for t in remaining}
 
         count = 0
         for future in as_completed(futures):
+            ticker = futures[future]
             result = future.result()
             _increment_processed(job_id)
+            processed_list.append(ticker)
             if result:
                 _append_result(job_id, result)
+                results_list.append(result)
             count += 1
             if count % 20 == 0:
                 _flush_job(job_id)
+                _save_progress(settings, tickers, processed_list, results_list)
+
+    _delete_progress()
 
     job = _get_job(job_id)
     hits = job["hits"] if job else 0
@@ -464,10 +525,23 @@ def api_screen_start():
     """スクリーニングをバックグラウンドで開始し、job_id を返す"""
     raw = request.get_json(silent=True) or {}
     settings = _parse_settings(raw.get("settings"))
+    fresh = raw.get("fresh", False)
+
+    resume_data = None
+    if fresh:
+        _delete_progress()
+    else:
+        progress = _load_progress()
+        if progress and progress.get("settings") == settings:
+            resume_data = progress
+        elif progress:
+            _delete_progress()
+
     job_id = _new_job()
-    t = threading.Thread(target=_run_screening, args=(job_id, settings), daemon=True)
+    t = threading.Thread(target=_run_screening,
+                         args=(job_id, settings, resume_data), daemon=True)
     t.start()
-    return jsonify({"ok": True, "job_id": job_id})
+    return jsonify({"ok": True, "job_id": job_id, "resumed": resume_data is not None})
 
 
 @app.route("/api/screen/poll/<job_id>")
@@ -493,6 +567,29 @@ def api_screen_poll(job_id):
         "new_results": new_results,
         "cursor": new_cursor,
     })
+
+
+@app.route("/api/progress/check")
+def api_progress_check():
+    """中断された進捗があるか確認"""
+    progress = _load_progress()
+    if progress is None:
+        return jsonify({"ok": True, "has_progress": False})
+    return jsonify({
+        "ok": True,
+        "has_progress": True,
+        "processed": len(progress.get("processed", [])),
+        "total": len(progress.get("tickers", [])),
+        "hits": len(progress.get("results", [])),
+        "settings": progress.get("settings", {}),
+    })
+
+
+@app.route("/api/progress/reset", methods=["POST"])
+def api_progress_reset():
+    """中断データを削除"""
+    _delete_progress()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/chart/<ticker>")
