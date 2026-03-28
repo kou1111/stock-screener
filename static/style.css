@@ -252,6 +252,25 @@ header .badge-auto {
 .change.up   { color: var(--red); }
 .change.down { color: var(--blue); }
 
+.badge-norebound {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--blue);
+}
+.badge-rebound {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  background: rgba(139, 148, 158, 0.1);
+  color: var(--muted);
+}
+
 .empty-state {
   text-align: center;
   padding: 40px 20px;

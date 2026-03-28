@@ -177,7 +177,7 @@ def get_ticker_name(ticker: str) -> str:
 
 # ── 設定パース ────────────────────────────────────
 def _parse_settings(raw: dict | None) -> dict:
-    defaults = {"threshold": -3.0, "days": 4, "wick_pct": 30.0}
+    defaults = {"threshold": -1.0, "days": 4, "wick_pct": 50.0}
     if not raw:
         return defaults
     return {
@@ -189,7 +189,9 @@ def _parse_settings(raw: dict | None) -> dict:
 
 # ── 1銘柄のスクリーニング ─────────────────────────
 def screen_worker(ticker: str, settings: dict) -> dict | None:
-    """累積下落＋日中リバウンドなし判定"""
+    """累積下落＋日中リバウンドなし判定
+    閾値以下の銘柄を全て返す。上髭はデータとして返し、フロントで表示する。
+    """
     try:
         tk = yf.Ticker(ticker)
 
@@ -215,11 +217,13 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
         cum_change = (current - ref_close) / ref_close * 100
 
         threshold = settings["threshold"]
-        wick_tol = settings["wick_pct"]
 
-        # 期間中の各日の上髭を計算
+        # 累積下落率が閾値超なら対象外
+        if cum_change > threshold:
+            return None
+
+        # 期間中の各日の上髭を計算 (フィルタではなく表示用データ)
         max_wick = 0.0
-        wick_ok = True
         for i in range(n_days):
             d_idx = -(n_days - i)  # 古い日 → 新しい日の順
             o = float(df["Open"].iloc[d_idx])
@@ -231,12 +235,10 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
             wick = (upper_wick / day_range * 100) if day_range > 0 else 0.0
             if wick > max_wick:
                 max_wick = wick
-            if wick > wick_tol:
-                wick_ok = False
 
-        # 累積下落率が閾値以下 かつ 全日の上髭が許容値以下
-        if cum_change > threshold or not wick_ok:
-            return None
+        # 上髭が許容値以下かどうか (表示用フラグ)
+        wick_tol = settings["wick_pct"]
+        no_rebound = max_wick <= wick_tol
 
         name = get_ticker_name(ticker)
         return {
@@ -246,6 +248,7 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
             "ref_close": round(ref_close, 1),
             "cum_change": round(cum_change, 2),
             "max_wick": round(max_wick, 1),
+            "no_rebound": no_rebound,
         }
 
     except Exception:
@@ -283,7 +286,13 @@ def _run_screening(job_id: str, settings: dict):
 
     job = _get_job(job_id)
     hits = job["hits"] if job else 0
-    logging.info("スクリーニング完了: %d 銘柄処理 / %d 件検知", total, hits)
+    no_rebound_cnt = 0
+    if job:
+        no_rebound_cnt = sum(1 for r in job["results"] if r.get("no_rebound"))
+    logging.info(
+        "スクリーニング完了: %d 銘柄処理 / %d 件検知 (うちリバウンドなし %d 件)",
+        total, hits, no_rebound_cnt,
+    )
     _update_job(job_id, status="done", message="完了")
 
 

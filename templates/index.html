@@ -20,14 +20,14 @@
   <!-- 実行パネル -->
   <div class="card">
     <div class="card-title">累積下落＋リバウンドなし検知</div>
-    <p class="desc">JPX上場プライム市場銘柄（時価総額70億円以上）を対象に、累積下落かつ日中リバウンドなしの銘柄を検知します。</p>
+    <p class="desc">JPX上場プライム市場銘柄（時価総額70億円以上）を対象に、累積下落銘柄を検知します。上髭許容値以下の銘柄には「リバウンドなし」マークが付きます。</p>
 
     <!-- 条件設定 -->
     <div class="settings-section">
       <div class="settings-body" id="settings-body">
         <div class="setting-row">
           <span class="setting-label">累積下落閾値</span>
-          <input type="number" id="val-threshold" value="-3" max="0" step="0.5" class="setting-input">
+          <input type="number" id="val-threshold" value="-1" max="0" step="0.5" class="setting-input">
           <span class="setting-unit">%</span>
         </div>
         <div class="setting-row">
@@ -37,7 +37,7 @@
         </div>
         <div class="setting-row">
           <span class="setting-label">上髭許容</span>
-          <input type="number" id="val-wick" value="30" min="0" max="100" step="1" class="setting-input">
+          <input type="number" id="val-wick" value="50" min="0" max="100" step="1" class="setting-input">
           <span class="setting-unit">%</span>
         </div>
       </div>
@@ -72,6 +72,7 @@
           <th style="text-align:right">現在値</th>
           <th style="text-align:right">累積騰落率</th>
           <th style="text-align:right">最大上髭</th>
+          <th>状態</th>
         </tr></thead>
         <tbody id="result-tbody"></tbody>
       </table>
@@ -234,7 +235,7 @@ async function pollProgress(jobId) {
       if (d.hits === 0) {
         resultCard.style.display = "block";
         resultTbody.innerHTML =
-          '<tr><td colspan="6" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
+          '<tr><td colspan="7" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
       }
     } else if (d.status === "lost") {
       stopPolling();
@@ -262,6 +263,9 @@ async function pollProgress(jobId) {
 function appendRow(r) {
   const chgDir = r.cum_change >= 0 ? "up" : "down";
   const chgSign = r.cum_change >= 0 ? "+" : "";
+  const badge = r.no_rebound
+    ? '<span class="badge-norebound">リバウンドなし</span>'
+    : '<span class="badge-rebound">リバウンドあり</span>';
 
   const tr = document.createElement("tr");
   tr.innerHTML = `
@@ -271,6 +275,7 @@ function appendRow(r) {
     <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
     <td class="change ${chgDir}">${chgSign}${r.cum_change.toFixed(1)}%</td>
     <td class="price">${r.max_wick.toFixed(1)}%</td>
+    <td>${badge}</td>
   `;
   resultTbody.appendChild(tr);
 }
