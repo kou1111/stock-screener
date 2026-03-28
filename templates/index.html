@@ -105,6 +105,8 @@ const chartTitle   = document.getElementById("chart-title");
 let pollTimer = null;
 let currentJobId = null;
 let currentCursor = 0;
+let autoRetryCount = 0;
+const MAX_AUTO_RETRY = 3;
 
 /* ── 設定 localStorage ────────────────────────────── */
 const SETTINGS_KEY = "stock_screener_settings";
@@ -150,11 +152,13 @@ function stopPolling() {
 function displayCode(ticker) { return ticker.replace(/\.T$/, ""); }
 
 /* ── スクリーニング実行 ──────────────────────────── */
-async function runScreen() {
+async function runScreen(isAutoRetry) {
   stopPolling();
 
+  if (!isAutoRetry) autoRetryCount = 0;
+
   screenBtn.disabled = true;
-  screenBtn.textContent = "実行中...";
+  screenBtn.textContent = isAutoRetry ? "自動再実行中..." : "実行中...";
   resultCard.style.display = "none";
   resultTbody.innerHTML = "";
   hitCount.textContent = "";
@@ -239,13 +243,20 @@ async function pollProgress(jobId) {
       }
     } else if (d.status === "lost") {
       stopPolling();
-      screenBtn.disabled = false;
-      screenBtn.textContent = "スクリーニング実行";
-      progressArea.style.display = "none";
-      setStatus(
-        `<span class="dot err"></span> ${d.message} ` +
-        `<button class="btn btn-primary" style="margin-left:12px;padding:6px 16px;font-size:13px;" onclick="runScreen()">再実行</button>`
-      );
+      if (autoRetryCount < MAX_AUTO_RETRY) {
+        autoRetryCount++;
+        setStatus(`<span class="spinner"></span> サーバー再起動を検知 — 自動再実行中... (${autoRetryCount}/${MAX_AUTO_RETRY})`);
+        progressText.textContent = `3秒後に自動再実行します... (${autoRetryCount}/${MAX_AUTO_RETRY})`;
+        setTimeout(() => runScreen(true), 3000);
+      } else {
+        screenBtn.disabled = false;
+        screenBtn.textContent = "スクリーニング実行";
+        progressArea.style.display = "none";
+        setStatus(
+          `<span class="dot err"></span> ${d.message}（自動再実行${MAX_AUTO_RETRY}回失敗）` +
+          `<button class="btn btn-primary" style="margin-left:12px;padding:6px 16px;font-size:13px;" onclick="runScreen()">再実行</button>`
+        );
+      }
     } else if (d.status === "error") {
       stopPolling();
       screenBtn.disabled = false;
