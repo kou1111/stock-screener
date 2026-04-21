@@ -19,25 +19,20 @@
 
   <!-- 実行パネル -->
   <div class="card">
-    <div class="card-title">累積下落＋リバウンドなし検知</div>
-    <p class="desc">JPX上場プライム市場銘柄（時価総額70億円以上）を対象に、累積下落銘柄を検知します。上髭許容値以下の銘柄には「リバウンドなし」マークが付きます。</p>
+    <div class="card-title">累積下落スクリーニング（1〜5日一括）</div>
+    <p class="desc">JPX上場プライム市場銘柄（時価総額70億円以上）を対象に、1〜5日間の累積下落銘柄をまとめて検知します。</p>
 
     <!-- 条件設定 -->
     <div class="settings-section">
       <div class="settings-body" id="settings-body">
         <div class="setting-row">
           <span class="setting-label">累積下落閾値</span>
-          <input type="number" id="val-threshold" value="-1" max="0" step="0.5" class="setting-input">
+          <input type="number" id="val-threshold" value="-5" max="0" step="0.5" class="setting-input">
           <span class="setting-unit">%</span>
         </div>
         <div class="setting-row">
-          <span class="setting-label">対象日数</span>
-          <input type="number" id="val-days" value="4" min="1" max="10" step="1" class="setting-input">
-          <span class="setting-unit">日</span>
-        </div>
-        <div class="setting-row">
           <span class="setting-label">上髭許容</span>
-          <input type="number" id="val-wick" value="50" min="0" max="100" step="1" class="setting-input">
+          <input type="number" id="val-wick" value="4" min="0" max="100" step="1" class="setting-input">
           <span class="setting-unit">%</span>
         </div>
       </div>
@@ -70,17 +65,29 @@
       スクリーニング結果
       <span class="hit-count" id="hit-count"></span>
     </div>
+
+    <div class="tab-bar">
+      <button class="tab active" data-days="1" onclick="switchTab(1)">1日 <span class="tab-count" id="tab-count-1">0</span></button>
+      <button class="tab" data-days="2" onclick="switchTab(2)">2日 <span class="tab-count" id="tab-count-2">0</span></button>
+      <button class="tab" data-days="3" onclick="switchTab(3)">3日 <span class="tab-count" id="tab-count-3">0</span></button>
+      <button class="tab" data-days="4" onclick="switchTab(4)">4日 <span class="tab-count" id="tab-count-4">0</span></button>
+      <button class="tab" data-days="5" onclick="switchTab(5)">5日 <span class="tab-count" id="tab-count-5">0</span></button>
+    </div>
+
     <div id="result-body">
       <table class="result-table" id="result-table">
-        <thead id="result-thead"><tr>
+        <thead><tr>
           <th>銘柄</th><th>銘柄名</th>
-          <th style="text-align:right">N日前終値</th>
+          <th id="ref-close-th" style="text-align:right">1日前終値</th>
           <th style="text-align:right">現在値</th>
           <th style="text-align:right">累積騰落率</th>
           <th style="text-align:right">最大上髭</th>
-          <th>状態</th>
         </tr></thead>
-        <tbody id="result-tbody"></tbody>
+        <tbody id="result-tbody-1"></tbody>
+        <tbody id="result-tbody-2" class="hidden-tab"></tbody>
+        <tbody id="result-tbody-3" class="hidden-tab"></tbody>
+        <tbody id="result-tbody-4" class="hidden-tab"></tbody>
+        <tbody id="result-tbody-5" class="hidden-tab"></tbody>
       </table>
     </div>
   </div>
@@ -105,7 +112,6 @@ const progressArea = document.getElementById("progress-area");
 const progressFill = document.getElementById("progress-fill");
 const progressText = document.getElementById("progress-text");
 const resultCard   = document.getElementById("result-card");
-const resultTbody  = document.getElementById("result-tbody");
 const hitCount     = document.getElementById("hit-count");
 const chartArea    = document.getElementById("chart-area");
 const chartTitle   = document.getElementById("chart-title");
@@ -116,6 +122,9 @@ let currentCursor = 0;
 let autoRetryCount = 0;
 const MAX_AUTO_RETRY = 3;
 
+let activeTab = 1;
+let tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+
 /* ── 設定 localStorage ────────────────────────────── */
 const SETTINGS_KEY = "stock_screener_settings";
 
@@ -124,7 +133,6 @@ function loadSettings() {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
     if (!saved) return;
     if (saved.threshold != null) document.getElementById("val-threshold").value = saved.threshold;
-    if (saved.days != null)      document.getElementById("val-days").value = saved.days;
     if (saved.wick_pct != null)  document.getElementById("val-wick").value = saved.wick_pct;
   } catch {}
 }
@@ -132,7 +140,6 @@ function loadSettings() {
 function saveSettings() {
   const s = {
     threshold: parseFloat(document.getElementById("val-threshold").value),
-    days:      parseInt(document.getElementById("val-days").value),
     wick_pct:  parseFloat(document.getElementById("val-wick").value),
   };
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
@@ -140,6 +147,33 @@ function saveSettings() {
 }
 
 loadSettings();
+
+/* ── タブ切り替え ─────────────────────────────────── */
+function switchTab(days) {
+  activeTab = days;
+  for (let d = 1; d <= 5; d++) {
+    document.getElementById(`result-tbody-${d}`).classList.toggle("hidden-tab", d !== days);
+    document.querySelector(`.tab[data-days="${d}"]`).classList.toggle("active", d === days);
+  }
+  document.getElementById("ref-close-th").textContent = `${days}日前終値`;
+}
+
+function updateTabCounts() {
+  let total = 0;
+  for (let d = 1; d <= 5; d++) {
+    total += tabHits[d];
+    document.getElementById(`tab-count-${d}`).textContent = tabHits[d];
+  }
+  hitCount.textContent = `${total} 件`;
+}
+
+function resetResults() {
+  for (let d = 1; d <= 5; d++) {
+    document.getElementById(`result-tbody-${d}`).innerHTML = "";
+  }
+  tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+  updateTabCounts();
+}
 
 /* ── 中断データチェック ───────────────────────────── */
 async function checkProgress() {
@@ -191,8 +225,7 @@ async function runScreen(isAutoRetry, fresh) {
   screenBtn.textContent = isAutoRetry ? "自動再実行中..." : "実行中...";
   hideResumeUI();
   resultCard.style.display = "none";
-  resultTbody.innerHTML = "";
-  hitCount.textContent = "";
+  resetResults();
   closeChart();
 
   progressArea.style.display = "block";
@@ -257,9 +290,9 @@ async function pollProgress(jobId) {
 
     if (d.new_results.length > 0) {
       resultCard.style.display = "block";
-      hitCount.textContent = `${d.hits} 件`;
       for (const r of d.new_results) appendRow(r);
       currentCursor = d.cursor;
+      updateTabCounts();
     }
 
     if (d.status === "done") {
@@ -267,14 +300,17 @@ async function pollProgress(jobId) {
       screenBtn.disabled = false;
       screenBtn.textContent = "スクリーニング実行";
       progressFill.style.width = "100%";
+      const totalHits = tabHits[1] + tabHits[2] + tabHits[3] + tabHits[4] + tabHits[5];
       progressText.textContent =
-        `完了 — ${d.processed.toLocaleString()} 銘柄処理 / ${d.hits} 件検知`;
-      setStatus(`<span class="dot ok"></span> スクリーニング完了: ${d.hits} 件検知`);
-      hitCount.textContent = `${d.hits} 件`;
-      if (d.hits === 0) {
-        resultCard.style.display = "block";
-        resultTbody.innerHTML =
-          '<tr><td colspan="7" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
+        `完了 — ${d.processed.toLocaleString()} 銘柄処理 / ${totalHits} 件検知`;
+      setStatus(`<span class="dot ok"></span> スクリーニング完了: ${totalHits} 件検知`);
+      updateTabCounts();
+      resultCard.style.display = "block";
+      for (let day = 1; day <= 5; day++) {
+        if (tabHits[day] === 0) {
+          document.getElementById(`result-tbody-${day}`).innerHTML =
+            '<tr><td colspan="6" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
+        }
       }
     } else if (d.status === "lost") {
       stopPolling();
@@ -307,23 +343,23 @@ async function pollProgress(jobId) {
 
 /* ── 結果行の追加 ─────────────────────────────────── */
 function appendRow(r) {
-  const chgDir = r.cum_change >= 0 ? "up" : "down";
-  const chgSign = r.cum_change >= 0 ? "+" : "";
-  const badge = r.no_rebound
-    ? '<span class="badge-norebound">リバウンドなし</span>'
-    : '<span class="badge-rebound">リバウンドあり</span>';
+  const days = r.days;
+  const tbody = document.getElementById(`result-tbody-${days}`);
+  if (!tbody) return;
 
+  tabHits[days]++;
+
+  const chgSign = r.cum_change >= 0 ? "+" : "";
   const tr = document.createElement("tr");
   tr.innerHTML = `
     <td><a class="ticker-link" onclick="showChart('${r.ticker}')">${displayCode(r.ticker)}</a></td>
     <td>${r.name}</td>
     <td class="price">${r.ref_close.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
     <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
-    <td class="change ${chgDir}">${chgSign}${r.cum_change.toFixed(1)}%</td>
+    <td class="change down">${chgSign}${r.cum_change.toFixed(1)}%</td>
     <td class="price">${r.max_wick.toFixed(1)}%</td>
-    <td>${badge}</td>
   `;
-  resultTbody.appendChild(tr);
+  tbody.appendChild(tr);
 }
 
 /* ── チャート ─────────────────────────────────────── */

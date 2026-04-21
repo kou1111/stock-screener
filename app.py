@@ -1,5 +1,5 @@
 """
-日本株スクリーニング Web アプリ — 累積下落＋リバウンドなし検知
+日本株スクリーニング Web アプリ — 1〜5日間の累積下落を一括検知
 Flask + yfinance + Plotly
 JPX上場銘柄一覧から自動取得 → 時価総額70億円以上を対象
 バックグラウンドジョブ + ポーリング (Render 30秒タイムアウト対策)
@@ -208,20 +208,19 @@ def get_ticker_name(ticker: str) -> str:
 
 # ── 設定パース ────────────────────────────────────
 def _parse_settings(raw: dict | None) -> dict:
-    defaults = {"threshold": -1.0, "days": 4, "wick_pct": 50.0}
+    defaults = {"threshold": -5.0, "wick_pct": 4.0}
     if not raw:
         return defaults
     return {
         "threshold": float(raw.get("threshold", defaults["threshold"])),
-        "days": max(1, min(10, int(raw.get("days", defaults["days"])))),
         "wick_pct": float(raw.get("wick_pct", defaults["wick_pct"])),
     }
 
 
-# ── 1銘柄のスクリーニング ─────────────────────────
-def screen_worker(ticker: str, settings: dict) -> dict | None:
-    """累積下落＋日中リバウンドなし判定
-    閾値以下の銘柄を全て返す。上髭はデータとして返し、フロントで表示する。
+# ── 1銘柄のスクリーニング (1〜5日を一括計算) ────
+def screen_worker(ticker: str, settings: dict) -> list[dict]:
+    """1銘柄につき1〜5日間の累積下落を一度に計算する。
+    データ取得は1回だけ。条件を満たした日数分の結果をリストで返す。
     """
     try:
         tk = yf.Ticker(ticker)
@@ -231,59 +230,67 @@ def screen_worker(ticker: str, settings: dict) -> dict | None:
         except Exception:
             mcap = 0
         if mcap < MIN_MARKET_CAP:
-            return None
+            return []
 
-        n_days = settings["days"]
         end = datetime.now()
         start = end - timedelta(days=LOOKBACK_DAYS)
         df = tk.history(start=start, end=end, auto_adjust=True)
         if df.empty:
-            return None
+            return []
         df = df.dropna(subset=["Close"])
-        if len(df) < n_days + 1:
-            return None
-
-        current = float(df["Close"].iloc[-1])
-        ref_close = float(df["Close"].iloc[-(n_days + 1)])
-        cum_change = (current - ref_close) / ref_close * 100
+        if len(df) < 2:
+            return []
 
         threshold = settings["threshold"]
-
-        # 累積下落率が閾値超なら対象外
-        if cum_change > threshold:
-            return None
-
-        # 期間中の各日の上髭を計算 (フィルタではなく表示用データ)
-        max_wick = 0.0
-        for i in range(n_days):
-            d_idx = -(n_days - i)  # 古い日 → 新しい日の順
-            o = float(df["Open"].iloc[d_idx])
-            h = float(df["High"].iloc[d_idx])
-            l = float(df["Low"].iloc[d_idx])
-            c = float(df["Close"].iloc[d_idx])
-            upper_wick = h - max(o, c)
-            day_range = h - l
-            wick = (upper_wick / day_range * 100) if day_range > 0 else 0.0
-            if wick > max_wick:
-                max_wick = wick
-
-        # 上髭が許容値以下かどうか (表示用フラグ)
         wick_tol = settings["wick_pct"]
-        no_rebound = max_wick <= wick_tol
+        current = float(df["Close"].iloc[-1])
+        name = None  # 必要になるまで取得しない
 
-        name = get_ticker_name(ticker)
-        return {
-            "ticker": ticker,
-            "name": name,
-            "price": round(current, 1),
-            "ref_close": round(ref_close, 1),
-            "cum_change": round(cum_change, 2),
-            "max_wick": round(max_wick, 1),
-            "no_rebound": no_rebound,
-        }
+        results = []
+        for n_days in range(1, 6):
+            if len(df) < n_days + 1:
+                break
+
+            ref_close = float(df["Close"].iloc[-(n_days + 1)])
+            cum_change = (current - ref_close) / ref_close * 100
+
+            if cum_change > threshold:
+                continue
+
+            # 期間中の各日の上髭を計算
+            max_wick = 0.0
+            for i in range(n_days):
+                d_idx = -(n_days - i)
+                o = float(df["Open"].iloc[d_idx])
+                h = float(df["High"].iloc[d_idx])
+                l = float(df["Low"].iloc[d_idx])
+                c = float(df["Close"].iloc[d_idx])
+                upper_wick = h - max(o, c)
+                day_range = h - l
+                wick = (upper_wick / day_range * 100) if day_range > 0 else 0.0
+                if wick > max_wick:
+                    max_wick = wick
+
+            if max_wick > wick_tol:
+                continue
+
+            if name is None:
+                name = get_ticker_name(ticker)
+
+            results.append({
+                "ticker": ticker,
+                "name": name,
+                "price": round(current, 1),
+                "ref_close": round(ref_close, 1),
+                "cum_change": round(cum_change, 2),
+                "max_wick": round(max_wick, 1),
+                "days": n_days,
+            })
+
+        return results
 
     except Exception:
-        return None
+        return []
 
 
 # ── バックグラウンドスクリーニング処理 ────────────
@@ -305,8 +312,8 @@ def _run_screening(job_id: str, settings: dict, resume_data: dict | None = None)
         processed_set = set()
         prev_results = []
         logging.info(
-            "スクリーニング開始: %d 銘柄 (閾値=%s%%, 日数=%s, 上髭=%s%%)",
-            len(tickers), settings["threshold"], settings["days"], settings["wick_pct"],
+            "スクリーニング開始: %d 銘柄 (閾値=%s%%, 1〜5日, 上髭=%s%%)",
+            len(tickers), settings["threshold"], settings["wick_pct"],
         )
 
     total = len(tickers)
@@ -332,10 +339,10 @@ def _run_screening(job_id: str, settings: dict, resume_data: dict | None = None)
         count = 0
         for future in as_completed(futures):
             ticker = futures[future]
-            result = future.result()
+            result_list = future.result()
             _increment_processed(job_id)
             processed_list.append(ticker)
-            if result:
+            for result in result_list:
                 _append_result(job_id, result)
                 results_list.append(result)
             count += 1
@@ -347,13 +354,7 @@ def _run_screening(job_id: str, settings: dict, resume_data: dict | None = None)
 
     job = _get_job(job_id)
     hits = job["hits"] if job else 0
-    no_rebound_cnt = 0
-    if job:
-        no_rebound_cnt = sum(1 for r in job["results"] if r.get("no_rebound"))
-    logging.info(
-        "スクリーニング完了: %d 銘柄処理 / %d 件検知 (うちリバウンドなし %d 件)",
-        total, hits, no_rebound_cnt,
-    )
+    logging.info("スクリーニング完了: %d 銘柄処理 / %d 件検知", total, hits)
     _update_job(job_id, status="done", message="完了")
 
 

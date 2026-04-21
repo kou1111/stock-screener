@@ -269,29 +269,63 @@ header .badge-auto {
 .change.up   { color: var(--red); }
 .change.down { color: var(--blue); }
 
-.badge-norebound {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  background: rgba(88, 166, 255, 0.15);
-  color: var(--blue);
-}
-.badge-rebound {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  background: rgba(139, 148, 158, 0.1);
-  color: var(--muted);
-}
-
 .empty-state {
   text-align: center;
   padding: 40px 20px;
   color: var(--muted);
+}
+
+/* ── タブバー ─────────────────────────────────── */
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 16px;
+  border-bottom: 2px solid var(--border);
+}
+
+.tab {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tab-count {
+  font-size: 11px;
+  background: var(--bg);
+  color: var(--muted);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+  min-width: 20px;
+  text-align: center;
+}
+
+.tab.active .tab-count {
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--accent);
+}
+
+.hidden-tab {
+  display: none;
 }
 
 /* ── チャートエリア ────────────────────────────── */
