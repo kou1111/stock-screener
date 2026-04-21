@@ -207,14 +207,34 @@ def get_ticker_name(ticker: str) -> str:
 
 
 # ── 設定パース ────────────────────────────────────
+_DEFAULT_DAYS_CONFIG = {
+    "1": {"enabled": True, "threshold": -3.0, "wick_pct": 4.0},
+    "2": {"enabled": True, "threshold": -5.0, "wick_pct": 4.0},
+    "3": {"enabled": True, "threshold": -7.0, "wick_pct": 4.0},
+    "4": {"enabled": True, "threshold": -9.0, "wick_pct": 4.0},
+    "5": {"enabled": True, "threshold": -11.0, "wick_pct": 4.0},
+}
+
+
 def _parse_settings(raw: dict | None) -> dict:
-    defaults = {"threshold": -5.0, "wick_pct": 4.0}
-    if not raw:
-        return defaults
-    return {
-        "threshold": float(raw.get("threshold", defaults["threshold"])),
-        "wick_pct": float(raw.get("wick_pct", defaults["wick_pct"])),
-    }
+    if not raw or "days_config" not in raw:
+        return {"days_config": {k: dict(v) for k, v in _DEFAULT_DAYS_CONFIG.items()}}
+
+    days_config = {}
+    raw_dc = raw["days_config"]
+    for d in ("1", "2", "3", "4", "5"):
+        default = _DEFAULT_DAYS_CONFIG[d]
+        dc = raw_dc.get(d, raw_dc.get(int(d), {}))
+        if dc:
+            days_config[d] = {
+                "enabled": bool(dc.get("enabled", True)),
+                "threshold": float(dc.get("threshold", default["threshold"])),
+                "wick_pct": float(dc.get("wick_pct", default["wick_pct"])),
+            }
+        else:
+            days_config[d] = dict(default)
+
+    return {"days_config": days_config}
 
 
 # ── 1銘柄のスクリーニング (1〜5営業日を一括計算) ─
@@ -251,14 +271,20 @@ def screen_worker(ticker: str, settings: dict) -> list[dict]:
         if len(df) < 7:
             return []
 
-        threshold = settings["threshold"]
-        wick_tol = settings["wick_pct"]
+        days_config = settings["days_config"]
         # iloc[-1] = 最新営業日の終値
         current = float(df["Close"].iloc[-1])
         name = None  # 必要になるまで取得しない
 
         results = []
         for n_days in range(1, 6):
+            cfg = days_config.get(str(n_days), {})
+            if not cfg.get("enabled", False):
+                continue
+
+            threshold = cfg["threshold"]
+            wick_tol = cfg["wick_pct"]
+
             # n営業日前の終値: iloc[-(n_days+1)]
             # 例: 1営業日前 → iloc[-2], 5営業日前 → iloc[-6]
             ref_close = float(df["Close"].iloc[-(n_days + 1)])
@@ -322,9 +348,11 @@ def _run_screening(job_id: str, settings: dict, resume_data: dict | None = None)
             return
         processed_set = set()
         prev_results = []
+        enabled = [d for d in range(1, 6)
+                   if settings["days_config"].get(str(d), {}).get("enabled")]
         logging.info(
-            "スクリーニング開始: %d 銘柄 (閾値=%s%%, 1〜5日, 上髭=%s%%)",
-            len(tickers), settings["threshold"], settings["wick_pct"],
+            "スクリーニング開始: %d 銘柄 (有効日数=%s)",
+            len(tickers), enabled,
         )
 
     total = len(tickers)

@@ -188,20 +188,6 @@ header .badge-auto {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
-.setting-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-}
-.setting-row + .setting-row {
-  border-top: 1px solid var(--border);
-}
-.setting-label {
-  font-size: 13px;
-  color: var(--text);
-  min-width: 100px;
-}
 .setting-input {
   width: 70px;
   background: var(--surface);
@@ -221,6 +207,58 @@ header .badge-auto {
   font-size: 13px;
   color: var(--muted);
   min-width: 16px;
+}
+
+/* ── 日数別設定グリッド ──────────────────────────── */
+.day-settings-header,
+.day-settings-row {
+  display: grid;
+  grid-template-columns: 65px 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+}
+.day-settings-header {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.day-header-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.day-settings-row + .day-settings-row {
+  border-top: 1px solid var(--border);
+}
+.day-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.day-check input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+.day-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.day-settings-row.disabled .setting-input {
+  opacity: 0.3;
+  pointer-events: none;
+}
+.day-settings-row.disabled .setting-unit {
+  opacity: 0.3;
 }
 
 /* ── 結果テーブル ──────────────────────────────── */

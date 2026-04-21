@@ -20,20 +20,40 @@
   <!-- 実行パネル -->
   <div class="card">
     <div class="card-title">累積下落スクリーニング（1〜5日一括）</div>
-    <p class="desc">JPX上場プライム市場銘柄（時価総額70億円以上）を対象に、1〜5日間の累積下落銘柄をまとめて検知します。</p>
+    <p class="desc">JPX上場プライム市場銘柄（時価総額70億円以上）を対象に、有効な日数の累積下落銘柄をまとめて検知します。</p>
 
-    <!-- 条件設定 -->
+    <!-- 条件設定: 日数別 -->
     <div class="settings-section">
       <div class="settings-body" id="settings-body">
-        <div class="setting-row">
-          <span class="setting-label">累積下落閾値</span>
-          <input type="number" id="val-threshold" value="-5" max="0" step="0.5" class="setting-input">
-          <span class="setting-unit">%</span>
+        <div class="day-settings-header">
+          <span></span>
+          <span class="day-header-label">累積下落閾値</span>
+          <span class="day-header-label">上髭許容</span>
         </div>
-        <div class="setting-row">
-          <span class="setting-label">上髭許容</span>
-          <input type="number" id="val-wick" value="4" min="0" max="100" step="1" class="setting-input">
-          <span class="setting-unit">%</span>
+        <div class="day-settings-row" id="setting-row-1">
+          <label class="day-check"><input type="checkbox" id="chk-1" checked> 1日</label>
+          <div class="day-field"><input type="number" id="val-threshold-1" value="-3" max="0" step="0.5" class="setting-input"><span class="setting-unit">%</span></div>
+          <div class="day-field"><input type="number" id="val-wick-1" value="4" min="0" max="100" step="1" class="setting-input"><span class="setting-unit">%</span></div>
+        </div>
+        <div class="day-settings-row" id="setting-row-2">
+          <label class="day-check"><input type="checkbox" id="chk-2" checked> 2日</label>
+          <div class="day-field"><input type="number" id="val-threshold-2" value="-5" max="0" step="0.5" class="setting-input"><span class="setting-unit">%</span></div>
+          <div class="day-field"><input type="number" id="val-wick-2" value="4" min="0" max="100" step="1" class="setting-input"><span class="setting-unit">%</span></div>
+        </div>
+        <div class="day-settings-row" id="setting-row-3">
+          <label class="day-check"><input type="checkbox" id="chk-3" checked> 3日</label>
+          <div class="day-field"><input type="number" id="val-threshold-3" value="-7" max="0" step="0.5" class="setting-input"><span class="setting-unit">%</span></div>
+          <div class="day-field"><input type="number" id="val-wick-3" value="4" min="0" max="100" step="1" class="setting-input"><span class="setting-unit">%</span></div>
+        </div>
+        <div class="day-settings-row" id="setting-row-4">
+          <label class="day-check"><input type="checkbox" id="chk-4" checked> 4日</label>
+          <div class="day-field"><input type="number" id="val-threshold-4" value="-9" max="0" step="0.5" class="setting-input"><span class="setting-unit">%</span></div>
+          <div class="day-field"><input type="number" id="val-wick-4" value="4" min="0" max="100" step="1" class="setting-input"><span class="setting-unit">%</span></div>
+        </div>
+        <div class="day-settings-row" id="setting-row-5">
+          <label class="day-check"><input type="checkbox" id="chk-5" checked> 5日</label>
+          <div class="day-field"><input type="number" id="val-threshold-5" value="-11" max="0" step="0.5" class="setting-input"><span class="setting-unit">%</span></div>
+          <div class="day-field"><input type="number" id="val-wick-5" value="4" min="0" max="100" step="1" class="setting-input"><span class="setting-unit">%</span></div>
         </div>
       </div>
     </div>
@@ -48,7 +68,7 @@
     </div>
     <div class="resume-info" id="resume-info" style="display:none;"></div>
 
-    <!-- 進捗バー -->
+    <!-- 進捗バ��� -->
     <div id="progress-area" style="display:none;">
       <div class="progress-bar-track">
         <div class="progress-bar-fill" id="progress-fill"></div>
@@ -66,7 +86,7 @@
       <span class="hit-count" id="hit-count"></span>
     </div>
 
-    <div class="tab-bar">
+    <div class="tab-bar" id="tab-bar">
       <button class="tab active" data-days="1" onclick="switchTab(1)">1日 <span class="tab-count" id="tab-count-1">0</span></button>
       <button class="tab" data-days="2" onclick="switchTab(2)">2日 <span class="tab-count" id="tab-count-2">0</span></button>
       <button class="tab" data-days="3" onclick="switchTab(3)">3日 <span class="tab-count" id="tab-count-3">0</span></button>
@@ -123,6 +143,7 @@ let autoRetryCount = 0;
 const MAX_AUTO_RETRY = 3;
 
 let activeTab = 1;
+let enabledDays = [1, 2, 3, 4, 5];
 let tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
 
 /* ── 設定 localStorage ────────────────────────────── */
@@ -131,29 +152,71 @@ const SETTINGS_KEY = "stock_screener_settings";
 function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
-    if (!saved) return;
-    if (saved.threshold != null) document.getElementById("val-threshold").value = saved.threshold;
-    if (saved.wick_pct != null)  document.getElementById("val-wick").value = saved.wick_pct;
+    if (!saved || !saved.days_config) return;
+    for (let d = 1; d <= 5; d++) {
+      const cfg = saved.days_config[d];
+      if (!cfg) continue;
+      document.getElementById(`chk-${d}`).checked = cfg.enabled !== false;
+      if (cfg.threshold != null) document.getElementById(`val-threshold-${d}`).value = cfg.threshold;
+      if (cfg.wick_pct != null)  document.getElementById(`val-wick-${d}`).value = cfg.wick_pct;
+    }
   } catch {}
 }
 
 function saveSettings() {
-  const s = {
-    threshold: parseFloat(document.getElementById("val-threshold").value),
-    wick_pct:  parseFloat(document.getElementById("val-wick").value),
-  };
+  const days_config = {};
+  for (let d = 1; d <= 5; d++) {
+    days_config[d] = {
+      enabled:   document.getElementById(`chk-${d}`).checked,
+      threshold: parseFloat(document.getElementById(`val-threshold-${d}`).value),
+      wick_pct:  parseFloat(document.getElementById(`val-wick-${d}`).value),
+    };
+  }
+  const s = { days_config };
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
   return s;
 }
 
 loadSettings();
 
+/* ── チェックボックスの有効/無効ビジュアル ─────────── */
+function applyRowDisabled() {
+  for (let d = 1; d <= 5; d++) {
+    const checked = document.getElementById(`chk-${d}`).checked;
+    document.getElementById(`setting-row-${d}`).classList.toggle("disabled", !checked);
+  }
+}
+for (let d = 1; d <= 5; d++) {
+  document.getElementById(`chk-${d}`).addEventListener("change", applyRowDisabled);
+}
+applyRowDisabled();
+
 /* ── タブ切り替え ─────────────────────────────────── */
+function getEnabledDays() {
+  const days = [];
+  for (let d = 1; d <= 5; d++) {
+    if (document.getElementById(`chk-${d}`).checked) days.push(d);
+  }
+  return days;
+}
+
+function buildTabs() {
+  for (let d = 1; d <= 5; d++) {
+    const tab = document.querySelector(`.tab[data-days="${d}"]`);
+    tab.style.display = enabledDays.includes(d) ? "" : "none";
+  }
+  if (enabledDays.length > 0) {
+    switchTab(enabledDays[0]);
+  }
+}
+
 function switchTab(days) {
+  if (!enabledDays.includes(days)) return;
   activeTab = days;
   for (let d = 1; d <= 5; d++) {
-    document.getElementById(`result-tbody-${d}`).classList.toggle("hidden-tab", d !== days);
-    document.querySelector(`.tab[data-days="${d}"]`).classList.toggle("active", d === days);
+    const isThis = d === days;
+    document.getElementById(`result-tbody-${d}`).classList.toggle("hidden-tab", !isThis);
+    document.querySelector(`.tab[data-days="${d}"]`).classList.toggle("active", isThis);
   }
   document.getElementById("ref-close-th").textContent = `${days}日前終値`;
 }
@@ -161,7 +224,9 @@ function switchTab(days) {
 function updateTabCounts() {
   let total = 0;
   for (let d = 1; d <= 5; d++) {
-    total += tabHits[d];
+    if (enabledDays.includes(d)) {
+      total += tabHits[d];
+    }
     document.getElementById(`tab-count-${d}`).textContent = tabHits[d];
   }
   hitCount.textContent = `${total} 件`;
@@ -215,17 +280,26 @@ function stopPolling() {
 
 function displayCode(ticker) { return ticker.replace(/\.T$/, ""); }
 
-/* ── スクリーニング実行 ──────────────────────────── */
+/* ── スクリーニング実行 ───���──────────────────────── */
 async function runScreen(isAutoRetry, fresh) {
   stopPolling();
 
-  if (!isAutoRetry) autoRetryCount = 0;
+  if (!isAutoRetry) {
+    autoRetryCount = 0;
+    enabledDays = getEnabledDays();
+  }
+
+  if (enabledDays.length === 0) {
+    setStatus('<span class="dot err"></span> 少なくとも1つの日数を有効にしてください');
+    return;
+  }
 
   screenBtn.disabled = true;
   screenBtn.textContent = isAutoRetry ? "自動再実行中..." : "実行中...";
   hideResumeUI();
   resultCard.style.display = "none";
   resetResults();
+  buildTabs();
   closeChart();
 
   progressArea.style.display = "block";
@@ -300,13 +374,14 @@ async function pollProgress(jobId) {
       screenBtn.disabled = false;
       screenBtn.textContent = "スクリーニング実行";
       progressFill.style.width = "100%";
-      const totalHits = tabHits[1] + tabHits[2] + tabHits[3] + tabHits[4] + tabHits[5];
+      let totalHits = 0;
+      for (const day of enabledDays) totalHits += tabHits[day];
       progressText.textContent =
         `完了 — ${d.processed.toLocaleString()} 銘柄処理 / ${totalHits} 件検知`;
       setStatus(`<span class="dot ok"></span> スクリーニング完了: ${totalHits} 件検知`);
       updateTabCounts();
       resultCard.style.display = "block";
-      for (let day = 1; day <= 5; day++) {
+      for (const day of enabledDays) {
         if (tabHits[day] === 0) {
           document.getElementById(`result-tbody-${day}`).innerHTML =
             '<tr><td colspan="6" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
