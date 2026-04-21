@@ -217,10 +217,19 @@ def _parse_settings(raw: dict | None) -> dict:
     }
 
 
-# ── 1銘柄のスクリーニング (1〜5日を一括計算) ────
+# ── 1銘柄のスクリーニング (1〜5営業日を一括計算) ─
 def screen_worker(ticker: str, settings: dict) -> list[dict]:
-    """1銘柄につき1〜5日間の累積下落を一度に計算する。
+    """1銘柄につき1〜5営業日の累積下落を一度に計算する。
     データ取得は1回だけ。条件を満たした日数分の結果をリストで返す。
+
+    yfinance の日足データは営業日のみ（土日祝は自動除外）なので
+    iloc インデックスがそのまま営業日ベースのオフセットになる:
+      iloc[-1] = 最新営業日（今日）
+      iloc[-2] = 1営業日前
+      iloc[-3] = 2営業日前
+      iloc[-4] = 3営業日前
+      iloc[-5] = 4営業日前
+      iloc[-6] = 5営業日前
     """
     try:
         tk = yf.Ticker(ticker)
@@ -238,29 +247,31 @@ def screen_worker(ticker: str, settings: dict) -> list[dict]:
         if df.empty:
             return []
         df = df.dropna(subset=["Close"])
-        if len(df) < 2:
+        # 最低7行必要: iloc[-1](今日) 〜 iloc[-6](5営業日前) + 余裕
+        if len(df) < 7:
             return []
 
         threshold = settings["threshold"]
         wick_tol = settings["wick_pct"]
+        # iloc[-1] = 最新営業日の終値
         current = float(df["Close"].iloc[-1])
         name = None  # 必要になるまで取得しない
 
         results = []
         for n_days in range(1, 6):
-            if len(df) < n_days + 1:
-                break
-
+            # n営業日前の終値: iloc[-(n_days+1)]
+            # 例: 1営業日前 → iloc[-2], 5営業日前 → iloc[-6]
             ref_close = float(df["Close"].iloc[-(n_days + 1)])
             cum_change = (current - ref_close) / ref_close * 100
 
             if cum_change > threshold:
                 continue
 
-            # 期間中の各日の上髭を計算
+            # 期間中の各営業日の上髭を計算
+            # n_days=3 の場合: iloc[-3], iloc[-2], iloc[-1] の3営業日分
             max_wick = 0.0
             for i in range(n_days):
-                d_idx = -(n_days - i)
+                d_idx = -(n_days - i)  # 古い営業日 → 新しい営業日の順
                 o = float(df["Open"].iloc[d_idx])
                 h = float(df["High"].iloc[d_idx])
                 l = float(df["Low"].iloc[d_idx])
