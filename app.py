@@ -730,24 +730,13 @@ def investigate_reason(code: str, name: str) -> str:
     )
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-4-20250514",
         max_tokens=16000,
         thinking={
             "type": "enabled",
             "budget_tokens": 10000,
         },
         messages=[{"role": "user", "content": prompt}],
-        tools=[{
-            "type": "web_search_20250305",
-            "name": "web_search",
-            "max_uses": 5,
-            "user_location": {
-                "type": "approximate",
-                "country": "JP",
-                "timezone": "Asia/Tokyo",
-            },
-        }],
-        betas=["interleaved-thinking-2025-05-14"],
     )
 
     # テキストブロックのみ結合（thinkingブロックは除外）
@@ -863,38 +852,46 @@ def api_pts():
 @app.route("/api/intraday/start", methods=["POST"])
 def api_intraday_start():
     """当日変動スキャンをバックグラウンドで開始"""
-    raw = request.get_json(silent=True) or {}
-    threshold = float(raw.get("threshold", 3.0))
-    job_id = _new_job()
-    t = threading.Thread(target=_run_intraday,
-                         args=(job_id, threshold), daemon=True)
-    t.start()
-    return jsonify({"ok": True, "job_id": job_id})
+    try:
+        raw = request.get_json(silent=True) or {}
+        threshold = float(raw.get("threshold", 3.0))
+        job_id = _new_job()
+        t = threading.Thread(target=_run_intraday,
+                             args=(job_id, threshold), daemon=True)
+        t.start()
+        return jsonify({"ok": True, "job_id": job_id})
+    except Exception as e:
+        logging.exception("当日変動スキャン開始エラー")
+        return jsonify({"ok": False, "error": str(e)})
 
 
 @app.route("/api/intraday/poll/<job_id>")
 def api_intraday_poll(job_id):
     """当日変動スキャンの進捗と結果を返す"""
-    job = _get_job(job_id)
-    if job is None:
-        return jsonify({"ok": False, "error": "ジョブが見つかりません"}), 404
+    try:
+        job = _get_job(job_id)
+        if job is None:
+            return jsonify({"ok": False, "error": "ジョブが見つかりません"}), 404
 
-    cursor = int(request.args.get("cursor", 0))
+        cursor = int(request.args.get("cursor", 0))
 
-    with _jobs_lock:
-        new_results = job["results"][cursor:]
-        new_cursor = len(job["results"])
+        with _jobs_lock:
+            new_results = job["results"][cursor:]
+            new_cursor = len(job["results"])
 
-    return jsonify({
-        "ok": True,
-        "status": job["status"],
-        "message": job.get("message", ""),
-        "total": job["total"],
-        "processed": job["processed"],
-        "hits": job["hits"],
-        "new_results": new_results,
-        "cursor": new_cursor,
-    })
+        return jsonify({
+            "ok": True,
+            "status": job["status"],
+            "message": job.get("message", ""),
+            "total": job["total"],
+            "processed": job["processed"],
+            "hits": job["hits"],
+            "new_results": new_results,
+            "cursor": new_cursor,
+        })
+    except Exception as e:
+        logging.exception("当日変動ポーリングエラー")
+        return jsonify({"ok": False, "error": str(e)})
 
 
 @app.route("/api/reason/<code>")

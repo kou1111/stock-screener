@@ -510,6 +510,7 @@ async function pollProgress(jobId) {
 
   try {
     const res = await fetch(`/api/screen/poll/${jobId}?cursor=${currentCursor}`);
+    if (!res.ok) return; // サーバーエラー時は次回リトライ
     const d = await res.json();
     if (!d.ok) {
       stopPolling();
@@ -802,6 +803,13 @@ async function fetchIntraday() {
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({threshold}),
     });
+    if (!res.ok) {
+      status.innerHTML = `<span class="dot err"></span> サーバーエラー (${res.status})`;
+      btn.disabled = false;
+      btn.textContent = "当日変動銘柄を取得";
+      progArea.style.display = "none";
+      return;
+    }
     const data = await res.json();
     if (!data.ok) {
       status.innerHTML = `<span class="dot err"></span> ${data.error || "開始に失敗"}`;
@@ -832,6 +840,7 @@ async function pollIntraday(jobId) {
 
   try {
     const res = await fetch(`/api/intraday/poll/${jobId}?cursor=${intradayCursor}`);
+    if (!res.ok) return; // サーバーエラー時は次回リトライ
     const d = await res.json();
     if (!d.ok) {
       stopIntradayPolling();
@@ -925,6 +934,7 @@ async function investigateReason(btn, code, name) {
 
   try {
     const res = await fetch(`/api/reason/${code}?name=${encodeURIComponent(name)}`);
+    if (!res.ok) throw new Error(`サーバーエラー (${res.status})`);
     const data = await res.json();
     if (!data.ok) {
       div.textContent = data.error;
