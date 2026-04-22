@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=12">
+  <link rel="stylesheet" href="/static/style.css?v=13">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -975,14 +975,18 @@ function formatReasonHtml(text) {
   }
 
   function bodyToHtml(body) {
+    function addDateBadge(html) {
+      return html.replace(/【(本日|時期不明|\d+営業日前|\d+日前|\d+週間前|\d+ヶ月前|\d+ヶ月以上前)】/g,
+        '<span class="rc-date-badge">$1</span>');
+    }
     return body.split("\n").map(line => {
       line = line.trim();
       if (!line) return "";
       const escaped = line.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       if (/^[・\-\*•]/.test(line)) {
-        return `<li>${escaped.replace(/^[・\-\*•]\s*/, "")}</li>`;
+        return `<li>${addDateBadge(escaped.replace(/^[・\-\*•]\s*/, ""))}</li>`;
       }
-      return `<p>${escaped}</p>`;
+      return `<p>${addDateBadge(escaped)}</p>`;
     }).join("");
   }
 
