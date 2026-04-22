@@ -624,13 +624,13 @@ def fetch_pts_stocks(threshold: float = PTS_THRESHOLD) -> list[dict]:
 
 # ── 変動理由調査 ─────────────────────────────────────
 def investigate_reason(code: str, name: str) -> str:
-    """OpenAI API (gpt-4o) + web_search で銘柄の変動理由を調査"""
-    api_key = os.environ.get("OPENAI_API_KEY")
+    """Anthropic API (Extended Thinking) + web_search で銘柄の変動理由を調査"""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("OPENAI_API_KEY が設定されていません")
+        raise ValueError("ANTHROPIC_API_KEY が設定されていません")
 
-    from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
 
     prompt = (
         f"日本株 {code} ({name}) が大幅に変動しています。\n"
@@ -641,13 +641,34 @@ def investigate_reason(code: str, name: str) -> str:
         f"3〜5文で要約してください。"
     )
 
-    response = client.responses.create(
-        model="gpt-4o",
-        tools=[{"type": "web_search_preview"}],
-        input=prompt,
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=16000,
+        thinking={
+            "type": "enabled",
+            "budget_tokens": 10000,
+        },
+        messages=[{"role": "user", "content": prompt}],
+        tools=[{
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 5,
+            "user_location": {
+                "type": "approximate",
+                "country": "JP",
+                "timezone": "Asia/Tokyo",
+            },
+        }],
+        betas=["interleaved-thinking-2025-05-14"],
     )
 
-    return response.output_text or "理由を特定できませんでした。"
+    # テキストブロックのみ結合（thinkingブロックは除外）
+    texts = []
+    for block in response.content:
+        if getattr(block, "type", None) == "text" and hasattr(block, "text"):
+            texts.append(block.text)
+
+    return "\n".join(texts) if texts else "理由を特定できませんでした。"
 
 
 # ── ルーティング ───────────────────────────────────

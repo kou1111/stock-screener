@@ -78,7 +78,7 @@ https://render.com にアクセスし、GitHub アカウントで登録します
 
 ### 5. 環境変数の設定（理由調査機能）
 
-「理由を調べる」機能には OpenAI API キーが必要です。
+「理由を調べる」機能には Anthropic API キーが必要です。
 
 1. Render ダッシュボードでサービスを選択
 2. **「Environment」** タブを開く
@@ -86,18 +86,18 @@ https://render.com にアクセスし、GitHub アカウントで登録します
 
 | Key | Value |
 |-----|-------|
-| `OPENAI_API_KEY` | `sk-...`（OpenAI ダッシュボードで取得したAPIキー） |
+| `ANTHROPIC_API_KEY` | `sk-ant-...`（Anthropic コンソールで取得したAPIキー） |
 
-APIキーは https://platform.openai.com/api-keys で取得できます。
+APIキーは https://console.anthropic.com で取得できます。
 
 ローカル環境では以下のように設定してください：
 
 ```bash
 # Windows
-set OPENAI_API_KEY=sk-...
+set ANTHROPIC_API_KEY=sk-ant-...
 
 # Mac/Linux
-export OPENAI_API_KEY=sk-...
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ### 注意点
