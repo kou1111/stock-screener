@@ -282,19 +282,22 @@ header .badge-auto {
 
 .watchlist-body {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .watchlist-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 5px 8px 5px 10px;
+  padding: 8px 10px 6px;
   font-size: 13px;
+}
+
+.watchlist-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .watchlist-name {
@@ -314,14 +317,23 @@ header .badge-auto {
   display: block;
   border-radius: 3px;
 }
-.watchlist-price {
+
+.wl-price {
   font-family: monospace;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
 }
-.watchlist-turnover {
+.wl-change {
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.wl-change.up   { color: var(--red); }
+.wl-change.down { color: var(--blue); }
+.wl-meta {
   color: var(--muted);
   font-size: 11px;
   font-family: monospace;
@@ -336,8 +348,31 @@ header .badge-auto {
   font-size: 16px;
   padding: 0 2px;
   line-height: 1;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 .watchlist-remove:hover { color: var(--red); }
+
+.watchlist-memo {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  padding: 4px 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+.watchlist-memo::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+.watchlist-memo:focus {
+  border-color: var(--accent);
+}
 
 /* ── ★ボタン ──────────────────────────────────── */
 .star-cell {

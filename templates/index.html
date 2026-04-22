@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=25">
+  <link rel="stylesheet" href="/static/style.css?v=26">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -241,7 +241,9 @@ let tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
 
 /* ── 注目銘柄 (watchlist) ────────────────────────── */
 const WATCHLIST_KEY = "stock_screener_watchlist";
+const MEMO_KEY = "stock_screener_memos";
 let watchlist = new Map();
+let watchlistMemos = {};
 
 function loadWatchlist() {
   try {
@@ -250,6 +252,7 @@ function loadWatchlist() {
       for (const item of saved) watchlist.set(item.ticker, {name: item.name, turnover: item.turnover || null, market_cap: item.market_cap || null, spark: item.spark || null});
     }
   } catch {}
+  try { watchlistMemos = JSON.parse(localStorage.getItem(MEMO_KEY)) || {}; } catch { watchlistMemos = {}; }
   renderWatchlist();
 }
 
@@ -257,6 +260,11 @@ function saveWatchlist() {
   const arr = [];
   for (const [ticker, info] of watchlist) arr.push({ticker, name: info.name, turnover: info.turnover, market_cap: info.market_cap, spark: info.spark});
   localStorage.setItem(WATCHLIST_KEY, JSON.stringify(arr));
+}
+
+function saveMemo(ticker, text) {
+  if (text) { watchlistMemos[ticker] = text; } else { delete watchlistMemos[ticker]; }
+  localStorage.setItem(MEMO_KEY, JSON.stringify(watchlistMemos));
 }
 
 function toggleWatchlist(ticker, name, turnover, market_cap, spark) {
@@ -277,6 +285,16 @@ function clearWatchlist() {
   updateStarButtons();
 }
 
+function _sparkPrice(spark) {
+  if (!spark || spark.length < 2) return {price: null, change: null};
+  const last = spark[spark.length - 1];
+  const prev = spark[spark.length - 2];
+  const price = last[3];
+  const prevClose = prev[3];
+  const change = prevClose > 0 ? (price - prevClose) / prevClose * 100 : null;
+  return {price, change};
+}
+
 function renderWatchlist() {
   const card = document.getElementById("watchlist-card");
   const body = document.getElementById("watchlist-body");
@@ -293,8 +311,12 @@ function renderWatchlist() {
 
   for (const [ticker, info] of watchlist) {
     const code = displayCode(ticker);
-    const item = document.createElement("span");
+    const item = document.createElement("div");
     item.className = "watchlist-item";
+
+    /* ── 上段 ── */
+    const top = document.createElement("div");
+    top.className = "watchlist-top";
 
     const link = document.createElement("a");
     link.className = "ticker-link";
@@ -304,17 +326,17 @@ function renderWatchlist() {
     const nameSpan = document.createElement("span");
     nameSpan.className = "watchlist-name";
     nameSpan.textContent = info.name;
+    nameSpan.title = info.name;
 
-    item.appendChild(link);
-    item.appendChild(nameSpan);
+    top.appendChild(link);
+    top.appendChild(nameSpan);
 
     const sparkWrap = document.createElement("span");
     sparkWrap.className = "watchlist-spark";
-    item.appendChild(sparkWrap);
+    top.appendChild(sparkWrap);
     if (info.spark && info.spark.length >= 2) {
       sparkCandle(info.spark, sparkWrap);
     } else {
-      // データ未取得の場合はサーバーから取得
       (async (tk, wrap, inf) => {
         try {
           const res = await fetch(`/api/spark/${encodeURIComponent(tk)}`);
@@ -324,24 +346,61 @@ function renderWatchlist() {
             if (d.market_cap) inf.market_cap = d.market_cap;
             saveWatchlist();
             sparkCandle(d.spark, wrap);
+            // 価格情報も更新
+            const p = _sparkPrice(d.spark);
+            const priceEl = item.querySelector(".wl-price");
+            const chgEl = item.querySelector(".wl-change");
+            if (priceEl && p.price != null) priceEl.textContent = p.price.toLocaleString("ja-JP");
+            if (chgEl && p.change != null) {
+              chgEl.textContent = (p.change >= 0 ? "+" : "") + p.change.toFixed(2) + "%";
+              chgEl.className = "wl-change " + (p.change >= 0 ? "up" : "down");
+            }
           }
         } catch {}
       })(ticker, sparkWrap, info);
     }
 
-    if (info.market_cap != null && info.market_cap > 0) {
-      const mcapSpan = document.createElement("span");
-      mcapSpan.className = "watchlist-turnover";
-      mcapSpan.textContent = formatMarketCap(info.market_cap);
-      item.appendChild(mcapSpan);
-    }
+    // 現在値・前日比
+    const {price, change} = _sparkPrice(info.spark);
+    const priceSpan = document.createElement("span");
+    priceSpan.className = "wl-price";
+    priceSpan.textContent = price != null ? price.toLocaleString("ja-JP") : "-";
+    top.appendChild(priceSpan);
+
+    const chgSpan = document.createElement("span");
+    chgSpan.className = "wl-change " + (change != null ? (change >= 0 ? "up" : "down") : "");
+    chgSpan.textContent = change != null ? (change >= 0 ? "+" : "") + change.toFixed(2) + "%" : "-";
+    top.appendChild(chgSpan);
+
+    // 売買代金
+    const toSpan = document.createElement("span");
+    toSpan.className = "wl-meta";
+    toSpan.textContent = info.turnover != null ? info.turnover.toLocaleString("ja-JP") + "億" : "";
+    top.appendChild(toSpan);
+
+    // 時価総額
+    const mcSpan = document.createElement("span");
+    mcSpan.className = "wl-meta";
+    mcSpan.textContent = formatMarketCap(info.market_cap);
+    top.appendChild(mcSpan);
 
     const removeBtn = document.createElement("button");
     removeBtn.className = "watchlist-remove";
     removeBtn.innerHTML = "&times;";
     removeBtn.onclick = () => toggleWatchlist(ticker, info.name);
+    top.appendChild(removeBtn);
 
-    item.appendChild(removeBtn);
+    item.appendChild(top);
+
+    /* ── 下段: メモ ── */
+    const memo = document.createElement("input");
+    memo.type = "text";
+    memo.className = "watchlist-memo";
+    memo.placeholder = "メモを入力...";
+    memo.value = watchlistMemos[ticker] || "";
+    memo.addEventListener("input", () => saveMemo(ticker, memo.value));
+    item.appendChild(memo);
+
     body.appendChild(item);
   }
 }
