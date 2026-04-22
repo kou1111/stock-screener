@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=28">
+  <link rel="stylesheet" href="/static/style.css?v=29">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -324,28 +324,32 @@ function renderWatchlist() {
     const item = document.createElement("div");
     item.className = "watchlist-item";
 
-    /* ── 上段 ── */
-    const top = document.createElement("div");
-    top.className = "watchlist-top";
-
+    /* ── 上段: コード・銘柄名・×ボタン ── */
+    const hdr = document.createElement("div");
+    hdr.className = "wl-header";
     const link = document.createElement("a");
     link.className = "ticker-link";
     link.textContent = code;
     link.onclick = () => showChart(ticker, info.name);
-
     const nameSpan = document.createElement("span");
     nameSpan.className = "watchlist-name";
     nameSpan.textContent = info.name;
     nameSpan.title = info.name;
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "watchlist-remove";
+    removeBtn.innerHTML = "&times;";
+    removeBtn.onclick = () => toggleWatchlist(ticker, info.name);
+    hdr.appendChild(link);
+    hdr.appendChild(nameSpan);
+    hdr.appendChild(removeBtn);
+    item.appendChild(hdr);
 
-    top.appendChild(link);
-    top.appendChild(nameSpan);
-
-    const sparkWrap = document.createElement("span");
-    sparkWrap.className = "watchlist-spark";
-    top.appendChild(sparkWrap);
+    /* ── 中段: ミニチャート ── */
+    const sparkWrap = document.createElement("div");
+    sparkWrap.className = "wl-chart";
+    item.appendChild(sparkWrap);
     if (info.spark && info.spark.length >= 2) {
-      sparkCandle(info.spark, sparkWrap);
+      sparkCandle(info.spark, sparkWrap, true);
     } else {
       (async (tk, wrap, inf) => {
         try {
@@ -355,8 +359,7 @@ function renderWatchlist() {
             inf.spark = d.spark;
             if (d.market_cap) inf.market_cap = d.market_cap;
             saveWatchlist();
-            sparkCandle(d.spark, wrap);
-            // 価格情報も更新
+            sparkCandle(d.spark, wrap, true);
             const p = _sparkPrice(d.spark);
             const priceEl = item.querySelector(".wl-price");
             const chgEl = item.querySelector(".wl-change");
@@ -370,39 +373,33 @@ function renderWatchlist() {
       })(ticker, sparkWrap, info);
     }
 
-    // 現在値・前日比
+    /* ── 下段: 数値 ── */
+    const stats = document.createElement("div");
+    stats.className = "wl-stats";
     const {price, change} = _sparkPrice(info.spark);
+
     const priceSpan = document.createElement("span");
     priceSpan.className = "wl-price";
     priceSpan.textContent = price != null ? price.toLocaleString("ja-JP") : "-";
-    top.appendChild(priceSpan);
+    stats.appendChild(priceSpan);
 
     const chgSpan = document.createElement("span");
     chgSpan.className = "wl-change " + (change != null ? (change >= 0 ? "up" : "down") : "");
     chgSpan.textContent = change != null ? (change >= 0 ? "+" : "") + change.toFixed(2) + "%" : "-";
-    top.appendChild(chgSpan);
+    stats.appendChild(chgSpan);
 
-    // 売買代金
     const toSpan = document.createElement("span");
     toSpan.className = "wl-meta";
-    toSpan.textContent = info.turnover != null ? info.turnover.toLocaleString("ja-JP") + "億" : "";
-    top.appendChild(toSpan);
+    toSpan.textContent = info.turnover != null ? info.turnover.toLocaleString("ja-JP") + "億" : "-";
+    stats.appendChild(toSpan);
 
-    // 時価総額
     const mcSpan = document.createElement("span");
     mcSpan.className = "wl-meta";
     mcSpan.textContent = formatMarketCap(info.market_cap);
-    top.appendChild(mcSpan);
+    stats.appendChild(mcSpan);
+    item.appendChild(stats);
 
-    const removeBtn = document.createElement("button");
-    removeBtn.className = "watchlist-remove";
-    removeBtn.innerHTML = "&times;";
-    removeBtn.onclick = () => toggleWatchlist(ticker, info.name);
-    top.appendChild(removeBtn);
-
-    item.appendChild(top);
-
-    /* ── 下段: メモ ── */
+    /* ── 最下段: メモ ── */
     const memo = document.createElement("input");
     memo.type = "text";
     memo.className = "watchlist-memo";
@@ -563,10 +560,11 @@ function formatMarketCap(val) {
   return Math.round(oku).toLocaleString("ja-JP") + "億";
 }
 
-/* sparkCandle: OHLC配列 [[o,h,l,c],...] → ミニローソク足 canvas */
-function sparkCandle(ohlc, el) {
+/* sparkCandle: OHLC配列 [[o,h,l,c],...] → ミニローソク足 canvas
+   wide=true のとき注目銘柄カード用の幅広サイズ */
+function sparkCandle(ohlc, el, wide) {
   if (!ohlc || ohlc.length < 2 || !el) return;
-  const W = 180, H = 100, pad = 4, lm = 38;
+  const W = wide ? 310 : 180, H = wide ? 100 : 100, pad = 4, lm = 38;
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
   canvas.style.display = "block";

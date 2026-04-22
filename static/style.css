@@ -282,45 +282,72 @@ header .badge-auto {
 
 .watchlist-body {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .watchlist-item {
+  width: 350px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 10px 6px;
+  border-radius: 8px;
+  padding: 10px 12px 8px;
   font-size: 13px;
+  display: flex;
+  flex-direction: column;
 }
 
-.watchlist-top {
+/* 上段: コード・名前・×ボタン */
+.wl-header {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 6px;
 }
 
 .watchlist-name {
   color: var(--muted);
   font-size: 12px;
-  max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
-.watchlist-spark {
-  line-height: 0;
+.watchlist-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 2px;
+  line-height: 1;
   flex-shrink: 0;
 }
-.watchlist-spark canvas {
+.watchlist-remove:hover { color: var(--red); }
+
+/* 中段: チャート */
+.wl-chart {
+  line-height: 0;
+  margin-bottom: 6px;
+}
+.wl-chart canvas {
   display: block;
-  border-radius: 3px;
+  border-radius: 4px;
+}
+
+/* 下段: 数値 */
+.wl-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
 }
 
 .wl-price {
   font-family: monospace;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
@@ -340,23 +367,10 @@ header .badge-auto {
   white-space: nowrap;
 }
 
-.watchlist-remove {
-  background: none;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 16px;
-  padding: 0 2px;
-  line-height: 1;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-.watchlist-remove:hover { color: var(--red); }
-
+/* 最下段: メモ */
 .watchlist-memo {
   display: block;
   width: 100%;
-  margin-top: 5px;
   padding: 4px 8px;
   background: rgba(255,255,255,0.04);
   border: 1px solid var(--border);
