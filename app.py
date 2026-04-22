@@ -762,13 +762,13 @@ def _run_intraday(job_id: str, threshold: float):
 
 # ── 変動理由調査 ─────────────────────────────────────
 def investigate_reason(code: str, name: str) -> str:
-    """Anthropic API + web_search で銘柄の変動理由を調査"""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    """OpenAI gpt-4o-search-preview で銘柄の変動理由を調査"""
+    api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY が設定されていません")
+        raise ValueError("OPENAI_API_KEY が設定されていません")
 
-    import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
+    import openai
+    client = openai.OpenAI(api_key=api_key)
 
     today = datetime.now().strftime("%Y年%m月%d日")
 
@@ -787,10 +787,10 @@ def investigate_reason(code: str, name: str) -> str:
         f"3. アナリストレポート\n"
         f"4. 市場全体の動き（日経平均・セクター動向）\n\n"
         f"重要ルール：\n"
-        f"・各材料がいつ発表・報道されたかをweb_searchで必ず確認すること\n"
+        f"・各材料がいつ発表・報道されたかをWeb検索で必ず確認すること\n"
         f"・本日出た材料か、過去の材料かを正確に区別すること\n"
         f"・日付が特定できない場合は「時期不明」と明記すること\n"
-        f"・web_searchで調べた結果、明確な材料（決算・IR・ニュース等）が見つからない場合は、【変動の主な理由】の最初の行に「⚠️ 本日時点で明確な材料は確認できませんでした。」と書き、その後に考えられる背景要因（セクター全体の動き・市場環境・テクニカル的な動きなど）を続けること。明確な材料がある場合はこの一文は不要。\n\n"
+        f"・Web検索で調べた結果、明確な材料（決算・IR・ニュース等）が見つからない場合は、【変動の主な理由】の最初の行に「⚠️ 本日時点で明確な材料は確認できませんでした。」と書き、その後に考えられる背景要因（セクター全体の動き・市場環境・テクニカル的な動きなど）を続けること。明確な材料がある場合はこの一文は不要。\n\n"
         f"以下の形式で日本語で回答してください：\n\n"
         f"【変動の主な理由】\n"
         f"・【本日】〇〇〇〇（本日発表・報道された材料）\n"
@@ -806,23 +806,16 @@ def investigate_reason(code: str, name: str) -> str:
 
     logging.info("理由調査開始: %s (%s)", code, name)
     try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2000,
-            tools=[{"type": "web_search_20250305", "name": "web_search"}],
+        response = client.chat.completions.create(
+            model="gpt-4o-search-preview",
             messages=[{"role": "user", "content": prompt}],
             timeout=REASON_TIMEOUT,
         )
     except Exception as e:
-        logging.error("Anthropic API呼び出しエラー: %s — %s", type(e).__name__, e)
+        logging.error("OpenAI API呼び出しエラー: %s — %s", type(e).__name__, e)
         raise
 
-    texts = []
-    for block in response.content:
-        if getattr(block, "type", None) == "text" and hasattr(block, "text"):
-            texts.append(block.text)
-
-    result = "\n".join(texts) if texts else "理由を特定できませんでした。"
+    result = response.choices[0].message.content if response.choices else "理由を特定できませんでした。"
     logging.info("理由調査完了: %s (%d文字)", code, len(result))
     return result
 
