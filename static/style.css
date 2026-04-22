@@ -612,6 +612,11 @@ header .badge-auto {
   flex-shrink: 0;
   margin-top: 0;
 }
+.rc-no-material {
+  color: #f0ad4e;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
 .rc-date-badge {
   display: inline-block;
   font-size: 0.72rem;
