@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=20">
+  <link rel="stylesheet" href="/static/style.css?v=21">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -495,7 +495,7 @@ function formatMarketCap(val) {
 /* sparkCandle: OHLC配列 [[o,h,l,c],...] → ミニローソク足 canvas */
 function sparkCandle(ohlc, el) {
   if (!ohlc || ohlc.length < 2 || !el) return;
-  const W = 180, H = 100, pad = 4;
+  const W = 180, H = 100, pad = 4, lm = 38;
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
   canvas.style.display = "block";
@@ -509,24 +509,48 @@ function sparkCandle(ohlc, el) {
   }
   const range = hi - lo || 1;
   const n = ohlc.length;
-  const barW = Math.max(1, ((W - pad * 2) / n) * 0.6);
-  const gap = (W - pad * 2) / n;
+  const chartL = lm, chartR = W - pad;
+  const chartW = chartR - chartL;
+  const barW = Math.max(1, (chartW / n) * 0.6);
+  const gap = chartW / n;
 
   function yOf(v) { return pad + (1 - (v - lo) / range) * (H - pad * 2); }
 
+  // Y軸グリッド線 & ラベル (高値・中間・安値)
+  const mid = lo + range / 2;
+  const ticks = [hi, mid, lo];
+  ctx.font = "9px -apple-system, sans-serif";
+  ctx.textAlign = "right";
+  for (const v of ticks) {
+    const y = yOf(v);
+    // グリッド横線
+    ctx.strokeStyle = "rgba(255,255,255,0.15)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(lm, y);
+    ctx.lineTo(W - pad, y);
+    ctx.stroke();
+    // 価格ラベル
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.textBaseline = "middle";
+    const label = v >= 10000 ? Math.round(v).toLocaleString("ja-JP")
+                : v >= 1000 ? Math.round(v).toLocaleString("ja-JP")
+                : v.toFixed(1);
+    ctx.fillText(label, lm - 3, y);
+  }
+
+  // ローソク足描画
   const green = "#3fb950", red = "#f85149";
   for (let i = 0; i < n; i++) {
     const [o,h,l,c] = ohlc[i];
-    const x = pad + gap * i + gap / 2;
+    const x = chartL + gap * i + gap / 2;
     const color = c >= o ? green : red;
-    // ヒゲ
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(x, yOf(h));
     ctx.lineTo(x, yOf(l));
     ctx.stroke();
-    // 実体
     const top = yOf(Math.max(o, c));
     const bot = yOf(Math.min(o, c));
     const bodyH = Math.max(1, bot - top);
