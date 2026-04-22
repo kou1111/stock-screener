@@ -605,6 +605,9 @@ def fetch_pts_stocks() -> list[dict]:
         for s in stocks:
             if abs(s["change_pct"]) >= PTS_THRESHOLD and s["code"] not in seen:
                 seen.add(s["code"])
+                # 銘柄名をスクリーニングと同じ方法で取得
+                ticker = f"{s['code']}.T"
+                s["name"] = get_ticker_name(ticker)
                 all_stocks.append(s)
 
     all_stocks.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
