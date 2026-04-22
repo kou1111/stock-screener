@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=19">
+  <link rel="stylesheet" href="/static/style.css?v=20">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -45,7 +45,6 @@
             <th style="width:32px"></th>
             <th>銘柄</th>
             <th>銘柄名</th>
-            <th>20日</th>
             <th>通常終値</th>
             <th>PTS価格</th>
             <th>前日比</th>
@@ -84,7 +83,6 @@
             <th style="width:32px"></th>
             <th>銘柄</th>
             <th>銘柄名</th>
-            <th>20日</th>
             <th style="text-align:right">始値</th>
             <th style="text-align:right">現在値</th>
             <th style="text-align:right">変動率</th>
@@ -181,7 +179,6 @@
         <thead><tr>
           <th style="width:32px"></th>
           <th>銘柄</th><th>銘柄名</th>
-          <th>20日</th>
           <th id="ref-close-th" style="text-align:right">1日前終値</th>
           <th style="text-align:right">現在値</th>
           <th style="text-align:right">累積騰落率</th>
@@ -486,6 +483,7 @@ function stopPolling() {
 }
 
 function displayCode(ticker) { return ticker.replace(/\.T$/, ""); }
+function truncName(name, max) { max = max || 8; return name.length > max ? name.slice(0, max) + "\u2026" : name; }
 
 function formatMarketCap(val) {
   if (val == null || val <= 0) return "-";
@@ -650,7 +648,7 @@ async function pollProgress(jobId) {
       for (const day of enabledDays) {
         if (tabHits[day] === 0) {
           document.getElementById(`result-tbody-${day}`).innerHTML =
-            '<tr><td colspan="11" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
+            '<tr><td colspan="10" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
         }
       }
     } else if (d.status === "lost") {
@@ -707,8 +705,7 @@ function appendRow(r) {
   const rest = document.createElement("template");
   rest.innerHTML = `
     <td><a class="ticker-link" onclick="showChart('${r.ticker}', '${r.name.replace(/'/g, "\\'")}')">${displayCode(r.ticker)}</a></td>
-    <td>${r.name}</td>
-    <td class="spark-cell"></td>
+    <td class="name-spark-cell"><span class="name-truncate" title="${r.name}">${truncName(r.name)}</span><span class="spark-wrap"></span></td>
     <td class="price">${r.ref_close.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
     <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
     <td class="change down">${chgSign}${r.cum_change.toFixed(1)}%</td>
@@ -718,7 +715,7 @@ function appendRow(r) {
     <td><button class="btn-reason" onclick="investigateReason(this, '${displayCode(r.ticker)}', '${r.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...rest.content.children);
-  sparkCandle(r.spark, tr.querySelector(".spark-cell"));
+  sparkCandle(r.spark, tr.querySelector(".spark-wrap"));
   tbody.appendChild(tr);
 }
 
@@ -858,8 +855,7 @@ function appendPtsRow(s) {
   const tpl = document.createElement("template");
   tpl.innerHTML = `
     <td><a class="ticker-link" onclick="showChart('${ticker}', '${s.name.replace(/'/g, "\\'")}')">${s.code}</a></td>
-    <td>${s.name}</td>
-    <td class="spark-cell"></td>
+    <td class="name-spark-cell"><span class="name-truncate" title="${s.name}">${truncName(s.name)}</span><span class="spark-wrap"></span></td>
     <td class="price">${s.close ? s.close.toLocaleString("ja-JP") : "-"}</td>
     <td class="price">${s.pts_price ? s.pts_price.toLocaleString("ja-JP") : "-"}</td>
     <td class="change ${cls}">${sign}${s.change_pct.toFixed(2)}%</td>
@@ -868,7 +864,7 @@ function appendPtsRow(s) {
     <td><button class="btn-reason" onclick="investigateReason(this, '${s.code}', '${s.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...tpl.content.children);
-  sparkCandle(s.spark, tr.querySelector(".spark-cell"));
+  sparkCandle(s.spark, tr.querySelector(".spark-wrap"));
   tbody.appendChild(tr);
 }
 
@@ -1035,8 +1031,7 @@ function appendIntradayRow(s) {
   const tpl = document.createElement("template");
   tpl.innerHTML = `
     <td><a class="ticker-link" onclick="showChart('${ticker}', '${s.name.replace(/'/g, "\\'")}')">${s.code}</a></td>
-    <td>${s.name}</td>
-    <td class="spark-cell"></td>
+    <td class="name-spark-cell"><span class="name-truncate" title="${s.name}">${truncName(s.name)}</span><span class="spark-wrap"></span></td>
     <td class="price">${s.open ? s.open.toLocaleString("ja-JP") : "-"}</td>
     <td class="price">${s.current ? s.current.toLocaleString("ja-JP") : "-"}</td>
     <td class="change ${cls}">${sign}${s.change_pct.toFixed(2)}%</td>
@@ -1046,7 +1041,7 @@ function appendIntradayRow(s) {
     <td><button class="btn-reason" onclick="investigateReason(this, '${s.code}', '${s.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...tpl.content.children);
-  sparkCandle(s.spark, tr.querySelector(".spark-cell"));
+  sparkCandle(s.spark, tr.querySelector(".spark-wrap"));
   tbody.appendChild(tr);
 }
 
