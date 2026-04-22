@@ -22,9 +22,9 @@ body {
 
 /* ── レイアウト ────────────────────────────────── */
 .container {
-  max-width: 960px;
+  max-width: 100%;
   margin: 0 auto;
-  padding: 24px 20px;
+  padding: 16px 8px;
 }
 
 header {
