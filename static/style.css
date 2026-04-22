@@ -300,7 +300,7 @@ header .badge-auto {
 .watchlist-name {
   color: var(--muted);
   font-size: 12px;
-  max-width: 8em;
+  max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -405,26 +405,23 @@ header .badge-auto {
 .change.up   { color: var(--red); }
 .change.down { color: var(--blue); }
 
-.name-spark-cell {
-  padding: 6px 8px !important;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-.name-truncate {
-  display: inline-block;
-  max-width: 8em;
+.th-name,
+.name-cell {
+  width: 150px;
+  max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  vertical-align: middle;
-  margin-right: 6px;
 }
-.spark-wrap {
-  display: inline-block;
+.th-spark,
+.spark-cell {
+  width: 192px;
+  min-width: 192px;
+  padding: 4px 6px !important;
   vertical-align: middle;
   line-height: 0;
 }
-.spark-wrap canvas {
+.spark-cell canvas {
   display: block;
   border-radius: 3px;
 }
