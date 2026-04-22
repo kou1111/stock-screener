@@ -376,6 +376,11 @@ def _run_screening(job_id: str, settings: dict, resume_data: dict | None = None)
     results_list = list(prev_results)
     _save_progress(settings, tickers, processed_list, results_list)
 
+    # 重複排除: (ticker, days) の組み合わせで管理
+    seen_results = set()
+    for r in prev_results:
+        seen_results.add((r["ticker"], r["days"]))
+
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = {executor.submit(screen_worker, t, settings): t for t in remaining}
 
@@ -386,6 +391,10 @@ def _run_screening(job_id: str, settings: dict, resume_data: dict | None = None)
             _increment_processed(job_id)
             processed_list.append(ticker)
             for result in result_list:
+                key = (result["ticker"], result["days"])
+                if key in seen_results:
+                    continue
+                seen_results.add(key)
                 _append_result(job_id, result)
                 results_list.append(result)
             count += 1
