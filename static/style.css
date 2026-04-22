@@ -504,6 +504,11 @@ header .badge-auto {
 }
 
 /* ── PTS セクション ────────────────────────────── */
+.pts-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .btn-reason {
   background: none;
   border: 1px solid var(--border);

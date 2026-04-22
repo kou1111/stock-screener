@@ -587,8 +587,8 @@ def _scrape_kabutan_pts(url: str) -> list[dict]:
     return results
 
 
-def fetch_pts_stocks() -> list[dict]:
-    """PTS上昇・下落ランキングを取得して±3%以上の銘柄を返す"""
+def fetch_pts_stocks(threshold: float = PTS_THRESHOLD) -> list[dict]:
+    """PTS上昇・下落ランキングを取得して±threshold%以上の銘柄を返す"""
     # JPX銘柄名がまだ読み込まれていなければ先にロード
     if not _jpx_names:
         try:
@@ -602,7 +602,7 @@ def fetch_pts_stocks() -> list[dict]:
     for direction, url in PTS_URLS.items():
         stocks = _scrape_kabutan_pts(url)
         for s in stocks:
-            if abs(s["change_pct"]) >= PTS_THRESHOLD and s["code"] not in seen:
+            if abs(s["change_pct"]) >= threshold and s["code"] not in seen:
                 seen.add(s["code"])
                 # 当日出来高が3000株以下なら除外
                 ticker = f"{s['code']}.T"
@@ -759,7 +759,8 @@ def api_chart(ticker):
 def api_pts():
     """PTS大幅変動銘柄を取得"""
     try:
-        stocks = fetch_pts_stocks()
+        threshold = float(request.args.get("threshold", PTS_THRESHOLD))
+        stocks = fetch_pts_stocks(threshold)
         return jsonify({"ok": True, "stocks": stocks})
     except Exception as e:
         logging.exception("PTS取得エラー")

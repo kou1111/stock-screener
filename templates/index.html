@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=3">
+  <link rel="stylesheet" href="/static/style.css?v=4">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -21,7 +21,12 @@
   <div class="card" id="pts-card">
     <div class="card-title-row">
       <div class="card-title" style="margin-bottom:0;">PTS大幅変動銘柄</div>
-      <button class="btn btn-primary" id="pts-btn" onclick="fetchPts()">PTS銘柄を取得</button>
+      <div class="pts-controls">
+        <span class="setting-unit">±</span>
+        <input type="number" id="pts-threshold" value="3" min="0" max="100" step="0.5" class="setting-input">
+        <span class="setting-unit">%以上</span>
+        <button class="btn btn-primary" id="pts-btn" onclick="fetchPts()">PTS銘柄を取得</button>
+      </div>
     </div>
     <div id="pts-status" class="status-bar" style="margin-top:8px;"></div>
     <div id="pts-result" style="display:none; margin-top:12px;">
@@ -640,11 +645,25 @@ function closeChart() {
 }
 
 /* ── PTS銘柄取得 ──────────────────────────────────── */
+const PTS_THRESHOLD_KEY = "stock_screener_pts_threshold";
+const ptsThresholdInput = document.getElementById("pts-threshold");
+
+// localStorage から復元
+{
+  const saved = localStorage.getItem(PTS_THRESHOLD_KEY);
+  if (saved !== null) ptsThresholdInput.value = saved;
+}
+ptsThresholdInput.addEventListener("change", () => {
+  localStorage.setItem(PTS_THRESHOLD_KEY, ptsThresholdInput.value);
+});
+
 async function fetchPts() {
   const btn = document.getElementById("pts-btn");
   const status = document.getElementById("pts-status");
   const result = document.getElementById("pts-result");
   const tbody = document.getElementById("pts-tbody");
+  const threshold = parseFloat(ptsThresholdInput.value) || 3;
+  localStorage.setItem(PTS_THRESHOLD_KEY, ptsThresholdInput.value);
 
   btn.disabled = true;
   btn.textContent = "取得中...";
@@ -653,14 +672,14 @@ async function fetchPts() {
   tbody.innerHTML = "";
 
   try {
-    const res = await fetch("/api/pts");
+    const res = await fetch(`/api/pts?threshold=${threshold}`);
     const data = await res.json();
     if (!data.ok) {
       status.innerHTML = `<span class="dot err"></span> ${data.error}`;
       return;
     }
     if (data.stocks.length === 0) {
-      status.innerHTML = '<span class="dot"></span> ±3%以上の変動銘柄はありません';
+      status.innerHTML = `<span class="dot"></span> ±${threshold}%以上の変動銘柄はありません`;
       return;
     }
     status.innerHTML = `<span class="dot ok"></span> ${data.stocks.length}件の大幅変動銘柄`;
