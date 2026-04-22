@@ -185,11 +185,15 @@ def fetch_jpx_tickers() -> list[str]:
     )
 
     tickers = []
+    seen = set()
     for _, row in stocks.iterrows():
         code = str(row["code"]).strip()
         if not code:
             continue
         ticker = f"{code}.T"
+        if ticker in seen:
+            continue
+        seen.add(ticker)
         tickers.append(ticker)
         _jpx_names[ticker] = str(row["name"]).strip()
 
