@@ -607,39 +607,74 @@ header .badge-auto {
   cursor: not-allowed;
 }
 
-.reason-text {
-  margin-top: 8px;
-  padding: 10px 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--text);
-  white-space: pre-wrap;
+/* ── 理由調査サイドパネル ──────────────────────────── */
+.reason-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 999;
 }
-.reason-text.reason-cards {
-  white-space: normal;
-  padding: 0;
+.reason-overlay.open { display: block; }
+
+.reason-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 340px;
+  height: 100vh;
+  background: #1a1a2e;
+  border-right: 1px solid var(--border);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+}
+.reason-panel.open { transform: translateX(0); }
+
+.rp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.rp-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-close {
   background: none;
   border: none;
+  color: var(--muted);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
 }
-.reason-text.reason-error {
-  color: var(--red);
+.rp-close:hover { color: var(--text); }
+
+.rp-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
 }
 
-/* ── 理由カードグリッド ──────────────────────────── */
-.rc-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
+/* ── 理由カード（サイドパネル内縦並び） ───────────── */
 .rc-card {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 12px;
   border-top: 2px solid var(--border);
+  margin-bottom: 10px;
 }
 .rc-card.rc-reason   { border-top-color: var(--red); }
 .rc-card.rc-structure{ border-top-color: #f39c12; }
@@ -713,10 +748,6 @@ header .badge-auto {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-}
-
-@media (max-width: 640px) {
-  .rc-grid { grid-template-columns: 1fr; }
 }
 
 /* ── レスポンシブ ──────────────────────────────── */

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=27">
+  <link rel="stylesheet" href="/static/style.css?v=28">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -215,6 +215,16 @@
   </div>
 
 </div>
+
+<!-- 理由調査サイドパネル -->
+<div id="reason-panel" class="reason-panel">
+  <div class="rp-header">
+    <div class="rp-title" id="rp-title"></div>
+    <button class="rp-close" onclick="closeReasonPanel()">&times;</button>
+  </div>
+  <div class="rp-body" id="rp-body"></div>
+</div>
+<div id="reason-overlay" class="reason-overlay" onclick="closeReasonPanel()"></div>
 
 <script>
 const screenBtn    = document.getElementById("screen-btn");
@@ -1167,7 +1177,6 @@ function formatReasonHtml(text) {
   }
 
   if (parsed.length === 0) {
-    // パースできなかった場合はそのまま表示
     const escaped = text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     return `<div class="rc-fallback">${escaped}</div>`;
   }
@@ -1191,32 +1200,41 @@ function formatReasonHtml(text) {
     }).join("");
   }
 
-  let html = '<div class="rc-grid">';
+  let html = "";
   for (const s of parsed) {
     const inner = bodyToHtml(s.body);
     const hasList = inner.includes("<li>");
     const wrap = hasList ? `<ul>${inner}</ul>` : inner;
     html += `<div class="rc-card ${s.cls}"><div class="rc-head"><span class="rc-icon">${s.icon}</span><span class="rc-title">${s.key}</span></div><div class="rc-body">${wrap}</div></div>`;
   }
-  html += "</div>";
   return html;
 }
 
-async function investigateReason(btn, code, name) {
-  const existing = btn.parentElement.querySelector(".reason-text");
-  if (existing) {
-    existing.remove();
-    btn.textContent = "理由を調べる";
-    return;
-  }
+/* ── 理由調査サイドパネル ─────────────────────────── */
+let _reasonBtn = null;
 
+function openReasonPanel(code, name) {
+  document.getElementById("rp-title").textContent = `${code}  ${name}`;
+  document.getElementById("reason-panel").classList.add("open");
+  document.getElementById("reason-overlay").classList.add("open");
+}
+
+function closeReasonPanel() {
+  document.getElementById("reason-panel").classList.remove("open");
+  document.getElementById("reason-overlay").classList.remove("open");
+  if (_reasonBtn) { _reasonBtn.disabled = false; _reasonBtn.textContent = "理由を調べる"; _reasonBtn = null; }
+}
+
+async function investigateReason(btn, code, name) {
+  if (_reasonBtn === btn) { closeReasonPanel(); return; }
+  if (_reasonBtn) { _reasonBtn.disabled = false; _reasonBtn.textContent = "理由を調べる"; }
+  _reasonBtn = btn;
   btn.disabled = true;
   btn.textContent = "調査中...";
 
-  const div = document.createElement("div");
-  div.className = "reason-text";
-  div.innerHTML = '<span class="spinner"></span> AIがWeb検索で調査中...';
-  btn.parentElement.appendChild(div);
+  const body = document.getElementById("rp-body");
+  body.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span><p style="margin-top:12px;color:var(--muted)">AIがWeb検索で調査中...</p></div>';
+  openReasonPanel(code, name);
 
   try {
     const startRes = await fetch(`/api/reason/start/${code}`, {
@@ -1229,7 +1247,6 @@ async function investigateReason(btn, code, name) {
     if (!startData.ok) throw new Error(startData.error || "開始に失敗");
 
     const jobId = startData.job_id;
-    // ポーリングで結果を待つ
     while (true) {
       await new Promise(r => setTimeout(r, 2000));
       const pollRes = await fetch(`/api/reason/poll/${jobId}`);
@@ -1237,22 +1254,18 @@ async function investigateReason(btn, code, name) {
       const d = await pollRes.json();
       if (!d.ok) { throw new Error(d.error); }
       if (d.status === "done") {
-        div.innerHTML = formatReasonHtml(d.message);
-        div.classList.add("reason-cards");
+        body.innerHTML = formatReasonHtml(d.message);
         break;
       } else if (d.status === "error") {
-        div.textContent = d.message;
-        div.classList.add("reason-error");
+        body.innerHTML = `<div class="rc-fallback" style="color:var(--red)">${d.message}</div>`;
         break;
       }
-      // still running — keep polling
     }
   } catch (e) {
-    div.textContent = `エラー: ${e.message}`;
-    div.classList.add("reason-error");
+    body.innerHTML = `<div class="rc-fallback" style="color:var(--red)">エラー: ${e.message}</div>`;
   } finally {
     btn.disabled = false;
-    btn.textContent = "閉じる";
+    btn.textContent = "理由を調べる";
   }
 }
 </script>
