@@ -503,6 +503,42 @@ header .badge-auto {
   overflow: hidden;
 }
 
+/* ── PTS セクション ────────────────────────────── */
+.btn-reason {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--accent);
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.btn-reason:hover {
+  background: rgba(88, 166, 255, 0.1);
+  border-color: var(--accent);
+}
+.btn-reason:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reason-text {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.reason-text.reason-error {
+  color: var(--red);
+}
+
 /* ── レスポンシブ ──────────────────────────────── */
 @media (max-width: 640px) {
   .result-table { font-size: 12px; }

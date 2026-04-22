@@ -76,6 +76,30 @@ https://render.com にアクセスし、GitHub アカウントで登録します
 **「Create Web Service」** をクリックすると自動でビルド・デプロイが始まります。
 完了すると `https://stock-screener-xxxx.onrender.com` のような URL が発行されます。
 
+### 5. 環境変数の設定（PTS理由調査機能）
+
+PTS大幅変動銘柄の「理由を調べる」機能には Anthropic API キーが必要です。
+
+1. Render ダッシュボードでサービスを選択
+2. **「Environment」** タブを開く
+3. **「Add Environment Variable」** で以下を追加：
+
+| Key | Value |
+|-----|-------|
+| `ANTHROPIC_API_KEY` | `sk-ant-...`（Anthropic コンソールで取得したAPIキー） |
+
+APIキーは https://console.anthropic.com で取得できます。
+
+ローカル環境では以下のように設定してください：
+
+```bash
+# Windows
+set ANTHROPIC_API_KEY=sk-ant-...
+
+# Mac/Linux
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
 ### 注意点
 - Free プランではアクセスがないと 15 分でスリープします（次回アクセス時に約 30 秒の起動時間がかかります）
 - `stocks.txt` はサーバーのファイルシステムに保存されるため、再デプロイ時にリセットされます。永続化が必要な場合はデータベースの利用を検討してください

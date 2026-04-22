@@ -9,6 +9,8 @@ JPX上場銘柄一覧から自動取得 → 時価総額70億円以上を対象
 import io
 import json
 import logging
+import os
+import re
 import tempfile
 import threading
 import uuid
@@ -20,6 +22,7 @@ import pandas as pd
 import plotly
 import plotly.graph_objects as go
 import requests as http_requests
+from bs4 import BeautifulSoup
 from plotly.subplots import make_subplots
 import yfinance as yf
 from flask import Flask, jsonify, render_template, request
@@ -492,6 +495,166 @@ def build_chart_json(ticker: str, interval: str = "5m") -> str | None:
     return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
 
 
+# ── PTS銘柄取得 ───────────────────────────────────
+PTS_URLS = {
+    "up": "https://s.kabutan.jp/warnings/pts_night_price_increase/",
+    "down": "https://s.kabutan.jp/warnings/pts_night_price_decrease/",
+}
+PTS_THRESHOLD = 3.0  # ±3%
+
+
+def _parse_number(text: str) -> float:
+    """カンマ付き数値文字列をfloatに変換"""
+    return float(text.replace(",", "").strip())
+
+
+def _scrape_kabutan_pts(url: str) -> list[dict]:
+    """株探モバイル版のPTSランキングページをスクレイピング"""
+    results = []
+    try:
+        resp = http_requests.get(url, timeout=15, headers={
+            "User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"
+        })
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # テーブル行を探索
+        for tr in soup.select("table tr"):
+            cells = tr.find_all("td")
+            if len(cells) < 4:
+                continue
+
+            # 銘柄コードを探す (4桁の数字または英数字)
+            text = tr.get_text(" ", strip=True)
+            code_match = re.search(r"\b(\d{4}[A-Z]?)\b", text)
+            if not code_match:
+                continue
+
+            code = code_match.group(1)
+            # 変動率を探す (±XX.XX%)
+            pct_match = re.search(r"([+-]?\d+\.?\d*)\s*%", text)
+            if not pct_match:
+                continue
+
+            change_pct = float(pct_match.group(1))
+
+            # 銘柄名: 通常はコードの直後のテキスト
+            name = ""
+            for a in tr.find_all("a"):
+                a_text = a.get_text(strip=True)
+                if a_text and not a_text.isdigit() and code not in a_text:
+                    name = a_text
+                    break
+            if not name:
+                # aタグに名前がない場合、最初のセルからテキストを取得
+                first_text = cells[0].get_text(strip=True)
+                name_match = re.sub(r"\d{4}[A-Z]?\s*", "", first_text).strip()
+                if name_match:
+                    name = name_match
+
+            # 価格データを抽出
+            numbers = re.findall(r"[\d,]+\.?\d*", text)
+            # 通常終値とPTS価格を特定 (パターン: 通常終値, PTS価格, 変動額, 変動率%)
+            close_price = 0.0
+            pts_price = 0.0
+            change = 0.0
+
+            try:
+                # 変動額を探す
+                change_match = re.search(r"([+-][\d,]+\.?\d*)\s+[+-]?\d+\.?\d*%", text)
+                if change_match:
+                    change = _parse_number(change_match.group(1))
+
+                # 数値リストから価格を特定
+                clean_nums = []
+                for n in numbers:
+                    try:
+                        clean_nums.append(_parse_number(n))
+                    except ValueError:
+                        continue
+
+                if len(clean_nums) >= 2:
+                    # 通常: [通常終値, PTS価格, 変動額, 変動率]
+                    close_price = clean_nums[0]
+                    pts_price = clean_nums[1]
+            except (ValueError, IndexError):
+                pass
+
+            results.append({
+                "code": code,
+                "name": name,
+                "close": close_price,
+                "pts_price": pts_price,
+                "change": change,
+                "change_pct": change_pct,
+            })
+
+    except Exception as e:
+        logging.warning("PTS取得エラー (%s): %s", url, e)
+
+    return results
+
+
+def fetch_pts_stocks() -> list[dict]:
+    """PTS上昇・下落ランキングを取得して±3%以上の銘柄を返す"""
+    all_stocks = []
+    seen = set()
+
+    for direction, url in PTS_URLS.items():
+        stocks = _scrape_kabutan_pts(url)
+        for s in stocks:
+            if abs(s["change_pct"]) >= PTS_THRESHOLD and s["code"] not in seen:
+                seen.add(s["code"])
+                all_stocks.append(s)
+
+    all_stocks.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
+    return all_stocks
+
+
+# ── PTS変動理由調査 ──────────────────────────────────
+def investigate_reason(code: str, name: str) -> str:
+    """Anthropic API + web_search で銘柄の変動理由を調査"""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY が設定されていません")
+
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
+
+    prompt = (
+        f"日本株 {code} ({name}) がPTS（夜間取引）で大幅に変動しています。\n"
+        f"以下を調べて、変動の理由を日本語で簡潔に説明してください：\n"
+        f"1. Yahoo ファイナンス ({code})のニュース\n"
+        f"2. TDNet（適時開示情報）の最新開示\n"
+        f"3. その他関連ニュース\n\n"
+        f"3〜5文で要約してください。"
+    )
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}],
+        tools=[{
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 5,
+            "user_location": {
+                "type": "approximate",
+                "country": "JP",
+                "timezone": "Asia/Tokyo",
+            },
+        }],
+    )
+
+    # テキストブロックを結合
+    texts = []
+    for block in response.content:
+        if hasattr(block, "text"):
+            texts.append(block.text)
+
+    return "\n".join(texts) if texts else "理由を特定できませんでした。"
+
+
 # ── ルーティング ───────────────────────────────────
 @app.route("/")
 def index():
@@ -579,6 +742,31 @@ def api_chart(ticker):
     if chart_json is None:
         return jsonify({"ok": False, "error": "チャートデータを取得できませんでした"})
     return jsonify({"ok": True, "chart": json.loads(chart_json)})
+
+
+@app.route("/api/pts")
+def api_pts():
+    """PTS大幅変動銘柄を取得"""
+    try:
+        stocks = fetch_pts_stocks()
+        return jsonify({"ok": True, "stocks": stocks})
+    except Exception as e:
+        logging.exception("PTS取得エラー")
+        return jsonify({"ok": False, "error": str(e)})
+
+
+@app.route("/api/pts/reason/<code>")
+def api_pts_reason(code):
+    """PTS変動理由を調査"""
+    name = request.args.get("name", code)
+    try:
+        reason = investigate_reason(code, name)
+        return jsonify({"ok": True, "reason": reason})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)})
+    except Exception as e:
+        logging.exception("理由調査エラー: %s", code)
+        return jsonify({"ok": False, "error": f"調査中にエラーが発生しました: {e}"})
 
 
 if __name__ == "__main__":
