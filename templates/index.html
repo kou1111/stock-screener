@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=15">
+  <link rel="stylesheet" href="/static/style.css?v=16">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -39,6 +39,8 @@
             <th>PTS価格</th>
             <th>前日比</th>
             <th style="text-align:right">売買代金</th>
+            <th style="text-align:right">時価総額</th>
+            <th>20日</th>
             <th></th>
           </tr>
         </thead>
@@ -76,6 +78,8 @@
             <th style="text-align:right">変動率</th>
             <th style="text-align:right">出来高</th>
             <th style="text-align:right">売買代金</th>
+            <th style="text-align:right">時価総額</th>
+            <th>20日</th>
             <th></th>
           </tr>
         </thead>
@@ -180,6 +184,8 @@
           <th style="text-align:right">累積騰落率</th>
           <th style="text-align:right">最大上髭</th>
           <th style="text-align:right">売買代金</th>
+          <th style="text-align:right">時価総額</th>
+          <th>20日</th>
           <th></th>
         </tr></thead>
         <tbody id="result-tbody-1"></tbody>
@@ -239,7 +245,7 @@ function loadWatchlist() {
   try {
     const saved = JSON.parse(localStorage.getItem(WATCHLIST_KEY));
     if (Array.isArray(saved)) {
-      for (const item of saved) watchlist.set(item.ticker, {name: item.name, turnover: item.turnover || null});
+      for (const item of saved) watchlist.set(item.ticker, {name: item.name, turnover: item.turnover || null, market_cap: item.market_cap || null, spark: item.spark || null});
     }
   } catch {}
   renderWatchlist();
@@ -247,15 +253,15 @@ function loadWatchlist() {
 
 function saveWatchlist() {
   const arr = [];
-  for (const [ticker, info] of watchlist) arr.push({ticker, name: info.name, turnover: info.turnover});
+  for (const [ticker, info] of watchlist) arr.push({ticker, name: info.name, turnover: info.turnover, market_cap: info.market_cap, spark: info.spark});
   localStorage.setItem(WATCHLIST_KEY, JSON.stringify(arr));
 }
 
-function toggleWatchlist(ticker, name, turnover) {
+function toggleWatchlist(ticker, name, turnover, market_cap, spark) {
   if (watchlist.has(ticker)) {
     watchlist.delete(ticker);
   } else {
-    watchlist.set(ticker, {name, turnover: turnover || null});
+    watchlist.set(ticker, {name, turnover: turnover || null, market_cap: market_cap || null, spark: spark || null});
   }
   saveWatchlist();
   renderWatchlist();
@@ -297,16 +303,13 @@ function renderWatchlist() {
     nameSpan.className = "watchlist-name";
     nameSpan.textContent = info.name;
 
-    if (info.turnover != null) {
-      const turnoverSpan = document.createElement("span");
-      turnoverSpan.className = "watchlist-turnover";
-      turnoverSpan.textContent = info.turnover.toLocaleString("ja-JP") + "億";
-      item.appendChild(link);
-      item.appendChild(nameSpan);
-      item.appendChild(turnoverSpan);
-    } else {
-      item.appendChild(link);
-      item.appendChild(nameSpan);
+    item.appendChild(link);
+    item.appendChild(nameSpan);
+    if (info.market_cap != null && info.market_cap > 0) {
+      const mcapSpan = document.createElement("span");
+      mcapSpan.className = "watchlist-turnover";
+      mcapSpan.textContent = formatMarketCap(info.market_cap);
+      item.appendChild(mcapSpan);
     }
 
     const removeBtn = document.createElement("button");
@@ -460,6 +463,27 @@ function stopPolling() {
 
 function displayCode(ticker) { return ticker.replace(/\.T$/, ""); }
 
+function formatMarketCap(val) {
+  if (val == null || val <= 0) return "-";
+  const oku = val / 100_000_000;
+  if (oku >= 10000) return (oku / 10000).toFixed(1) + "兆";
+  return Math.round(oku).toLocaleString("ja-JP") + "億";
+}
+
+function sparkSvg(closes) {
+  if (!closes || closes.length < 2) return "";
+  const W = 120, H = 40, pad = 2;
+  const min = Math.min(...closes), max = Math.max(...closes);
+  const range = max - min || 1;
+  const pts = closes.map((v, i) => {
+    const x = pad + (i / (closes.length - 1)) * (W - pad * 2);
+    const y = pad + (1 - (v - min) / range) * (H - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const color = closes[closes.length - 1] >= closes[0] ? "var(--green)" : "var(--red)";
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/></svg>`;
+}
+
 /* ── スクリーニング実行 ──────────────────────────── */
 async function runScreen(isAutoRetry, fresh) {
   stopPolling();
@@ -565,7 +589,7 @@ async function pollProgress(jobId) {
       for (const day of enabledDays) {
         if (tabHits[day] === 0) {
           document.getElementById(`result-tbody-${day}`).innerHTML =
-            '<tr><td colspan="9" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
+            '<tr><td colspan="11" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
         }
       }
     } else if (d.status === "lost") {
@@ -615,7 +639,7 @@ function appendRow(r) {
   starBtn.className = "star-btn" + (isStarred ? " active" : "");
   starBtn.dataset.ticker = r.ticker;
   starBtn.textContent = "\u2605";
-  starBtn.onclick = () => toggleWatchlist(r.ticker, r.name, r.turnover);
+  starBtn.onclick = () => toggleWatchlist(r.ticker, r.name, r.turnover, r.market_cap, r.spark);
   starTd.appendChild(starBtn);
   tr.appendChild(starTd);
 
@@ -628,6 +652,8 @@ function appendRow(r) {
     <td class="change down">${chgSign}${r.cum_change.toFixed(1)}%</td>
     <td class="price">${r.max_wick.toFixed(1)}%</td>
     <td class="price">${r.turnover != null ? r.turnover.toLocaleString("ja-JP") + "億" : "-"}</td>
+    <td class="price">${formatMarketCap(r.market_cap)}</td>
+    <td class="spark-cell">${sparkSvg(r.spark)}</td>
     <td><button class="btn-reason" onclick="investigateReason(this, '${displayCode(r.ticker)}', '${r.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...rest.content.children);
@@ -763,6 +789,8 @@ function appendPtsRow(s) {
     <td class="price">${s.pts_price ? s.pts_price.toLocaleString("ja-JP") : "-"}</td>
     <td class="change ${cls}">${sign}${s.change_pct.toFixed(2)}%</td>
     <td class="price">${s.turnover != null ? s.turnover.toLocaleString("ja-JP") + "億" : "-"}</td>
+    <td class="price">${formatMarketCap(s.market_cap)}</td>
+    <td class="spark-cell">${sparkSvg(s.spark)}</td>
     <td><button class="btn-reason" onclick="investigateReason(this, '${s.code}', '${s.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...tpl.content.children);
@@ -926,6 +954,8 @@ function appendIntradayRow(s) {
     <td class="change ${cls}">${sign}${s.change_pct.toFixed(2)}%</td>
     <td class="price">${s.volume ? s.volume.toLocaleString("ja-JP") : "-"}</td>
     <td class="price">${s.turnover != null ? s.turnover.toLocaleString("ja-JP") + "億" : "-"}</td>
+    <td class="price">${formatMarketCap(s.market_cap)}</td>
+    <td class="spark-cell">${sparkSvg(s.spark)}</td>
     <td><button class="btn-reason" onclick="investigateReason(this, '${s.code}', '${s.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...tpl.content.children);

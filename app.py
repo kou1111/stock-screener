@@ -332,6 +332,7 @@ def screen_worker(ticker: str, settings: dict) -> list[dict]:
                 name = get_ticker_name(ticker)
 
             turnover = round(today_volume * current / 100_000_000, 1)
+            spark = df["Close"].tail(20).round(1).tolist()
             results.append({
                 "ticker": ticker,
                 "name": name,
@@ -341,6 +342,8 @@ def screen_worker(ticker: str, settings: dict) -> list[dict]:
                 "max_wick": round(max_wick, 1),
                 "days": n_days,
                 "turnover": turnover,
+                "market_cap": mcap,
+                "spark": spark,
             })
 
         return results
@@ -614,16 +617,28 @@ def fetch_pts_stocks(threshold: float = PTS_THRESHOLD) -> list[dict]:
                 # 当日出来高が3000株以下なら除外
                 ticker = f"{s['code']}.T"
                 try:
-                    hist = yf.Ticker(ticker).history(period="1d")
+                    tk_obj = yf.Ticker(ticker)
+                    hist = tk_obj.history(period="1mo", interval="1d", auto_adjust=True)
                     vol = float(hist["Volume"].iloc[-1]) if not hist.empty else 0
                 except Exception:
+                    tk_obj = None
+                    hist = None
                     vol = 0
                 if vol <= MIN_VOLUME:
                     continue
+                # 時価総額
+                try:
+                    mcap = tk_obj.fast_info.get("marketCap", 0) or 0 if tk_obj else 0
+                except Exception:
+                    mcap = 0
+                # スパークライン
+                spark = hist["Close"].dropna().tail(20).round(1).tolist() if hist is not None and not hist.empty else []
                 # JPXキャッシュから日本語銘柄名を取得
                 jpx_name = _jpx_names.get(ticker, "")
                 s["name"] = jpx_name if jpx_name and jpx_name != "-" else "-"
                 s["turnover"] = round(vol * s["pts_price"] / 100_000_000, 1)
+                s["market_cap"] = mcap
+                s["spark"] = spark
                 all_stocks.append(s)
 
     all_stocks.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
@@ -670,6 +685,11 @@ def _check_intraday(ticker: str, threshold: float) -> dict | None:
             name = get_ticker_name(ticker)
 
         turnover = round(volume * current / 100_000_000, 1)
+        try:
+            dfd = tk.history(period="1mo", interval="1d", auto_adjust=True)
+            spark = dfd["Close"].dropna().tail(20).round(1).tolist() if not dfd.empty else []
+        except Exception:
+            spark = []
         return {
             "code": ticker.replace(".T", ""),
             "name": name,
@@ -678,6 +698,8 @@ def _check_intraday(ticker: str, threshold: float) -> dict | None:
             "change_pct": round(change_pct, 2),
             "volume": int(volume),
             "turnover": turnover,
+            "market_cap": mcap,
+            "spark": spark,
         }
     except Exception:
         return None

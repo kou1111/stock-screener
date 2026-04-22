@@ -390,6 +390,15 @@ header .badge-auto {
 .change.up   { color: var(--red); }
 .change.down { color: var(--blue); }
 
+.spark-cell {
+  padding: 4px 8px !important;
+  vertical-align: middle;
+  line-height: 0;
+}
+.spark-cell svg {
+  display: block;
+}
+
 .empty-state {
   text-align: center;
   padding: 40px 20px;
