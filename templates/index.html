@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=6">
+  <link rel="stylesheet" href="/static/style.css?v=7">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -916,6 +916,72 @@ function appendIntradayRow(s) {
   tbody.appendChild(tr);
 }
 
+/* ── 理由調査結果のフォーマット ────��──────────────── */
+function formatReasonHtml(text) {
+  const sections = [
+    {key: "本日の株価動向", icon: "&#x1F4C8;", cls: "rc-price"},
+    {key: "変動の主な理由", icon: "&#x1F50D;", cls: "rc-reason"},
+    {key: "上昇の主な理由", icon: "&#x1F50D;", cls: "rc-reason"},
+    {key: "下落の主な理由", icon: "&#x1F50D;", cls: "rc-reason"},
+    {key: "背景にある構造的な要因", icon: "&#x1F3ED;", cls: "rc-structure"},
+    {key: "構造的な要因", icon: "&#x1F3ED;", cls: "rc-structure"},
+    {key: "背景", icon: "&#x1F3ED;", cls: "rc-structure"},
+    {key: "今後の注目材料", icon: "&#x1F4C5;", cls: "rc-outlook"},
+    {key: "注目材料", icon: "&#x1F4C5;", cls: "rc-outlook"},
+  ];
+
+  // テキストを【見出し】で分割
+  const parsed = [];
+  const used = new Set();
+  for (const sec of sections) {
+    const re = new RegExp("[【\\[]\\s*" + sec.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*[】\\]]", "i");
+    const idx = text.search(re);
+    if (idx === -1) continue;
+    // 同じ cls は1つだけ
+    if (used.has(sec.cls)) continue;
+    used.add(sec.cls);
+    // 次のセクション開始位置を探す
+    const afterHeading = text.indexOf("\n", idx);
+    if (afterHeading === -1) continue;
+    let endIdx = text.length;
+    for (const s2 of sections) {
+      const re2 = new RegExp("[【\\[]\\s*" + s2.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*[】\\]]", "i");
+      const m = text.substring(afterHeading).search(re2);
+      if (m > 0 && afterHeading + m < endIdx) endIdx = afterHeading + m;
+    }
+    const body = text.substring(afterHeading, endIdx).trim();
+    if (body) parsed.push({icon: sec.icon, key: sec.key, cls: sec.cls, body});
+  }
+
+  if (parsed.length === 0) {
+    // パースできなかった場合はそのまま表示
+    const escaped = text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    return `<div class="rc-fallback">${escaped}</div>`;
+  }
+
+  function bodyToHtml(body) {
+    return body.split("\n").map(line => {
+      line = line.trim();
+      if (!line) return "";
+      const escaped = line.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      if (/^[・\-\*•]/.test(line)) {
+        return `<li>${escaped.replace(/^[・\-\*•]\s*/, "")}</li>`;
+      }
+      return `<p>${escaped}</p>`;
+    }).join("");
+  }
+
+  let html = '<div class="rc-grid">';
+  for (const s of parsed) {
+    const inner = bodyToHtml(s.body);
+    const hasList = inner.includes("<li>");
+    const wrap = hasList ? `<ul>${inner}</ul>` : inner;
+    html += `<div class="rc-card ${s.cls}"><div class="rc-head"><span class="rc-icon">${s.icon}</span><span class="rc-title">${s.key}</span></div><div class="rc-body">${wrap}</div></div>`;
+  }
+  html += "</div>";
+  return html;
+}
+
 async function investigateReason(btn, code, name) {
   const existing = btn.parentElement.querySelector(".reason-text");
   if (existing) {
@@ -951,7 +1017,8 @@ async function investigateReason(btn, code, name) {
       const d = await pollRes.json();
       if (!d.ok) { throw new Error(d.error); }
       if (d.status === "done") {
-        div.textContent = d.message;
+        div.innerHTML = formatReasonHtml(d.message);
+        div.classList.add("reason-cards");
         break;
       } else if (d.status === "error") {
         div.textContent = d.message;

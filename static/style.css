@@ -540,8 +540,75 @@ header .badge-auto {
   color: var(--text);
   white-space: pre-wrap;
 }
+.reason-text.reason-cards {
+  white-space: normal;
+  padding: 0;
+  background: none;
+  border: none;
+}
 .reason-text.reason-error {
   color: var(--red);
+}
+
+/* ── 理由カードグリッド ──────────────────────────── */
+.rc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.rc-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  border-top: 2px solid var(--border);
+}
+.rc-card.rc-price    { border-top-color: var(--accent); }
+.rc-card.rc-reason   { border-top-color: var(--red); }
+.rc-card.rc-structure{ border-top-color: #f39c12; }
+.rc-card.rc-outlook  { border-top-color: var(--green); }
+
+.rc-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.rc-icon { font-size: 14px; }
+.rc-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.rc-body {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+.rc-body p {
+  margin: 0 0 3px;
+}
+.rc-body ul {
+  margin: 0;
+  padding-left: 16px;
+}
+.rc-body li {
+  margin-bottom: 2px;
+}
+.rc-fallback {
+  white-space: pre-wrap;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+@media (max-width: 640px) {
+  .rc-grid { grid-template-columns: 1fr; }
 }
 
 /* ── レスポンシブ ──────────────────────────────── */
