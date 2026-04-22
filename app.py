@@ -36,6 +36,10 @@ MIN_MARKET_CAP = 7_000_000_000  # 70億円
 MIN_VOLUME = 3_000  # 出来高フィルタ
 MAX_WORKERS = 50
 LOOKBACK_DAYS = 60
+REASON_TIMEOUT = 60  # 理由調査のタイムアウト(秒)
+
+# 理由調査用スレッドプール（スキャンと分離）
+_reason_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="reason")
 
 # JPX 銘柄名キャッシュ
 _jpx_names: dict[str, str] = {}
@@ -762,6 +766,7 @@ def investigate_reason(code: str, name: str) -> str:
             max_tokens=2000,
             tools=[{"type": "web_search_20250305", "name": "web_search"}],
             messages=[{"role": "user", "content": prompt}],
+            timeout=REASON_TIMEOUT,
         )
     except Exception as e:
         logging.error("Anthropic API呼び出しエラー: %s — %s", type(e).__name__, e)
@@ -925,7 +930,7 @@ def api_intraday_poll(job_id):
 
 @app.route("/api/reason/start/<code>", methods=["POST"])
 def api_reason_start(code):
-    """理由調査をバックグラウンドで開始"""
+    """理由調査をバックグラウンドで開始（専用スレッドプール使用）"""
     try:
         raw = request.get_json(silent=True) or {}
         name = raw.get("name", code)
@@ -940,8 +945,7 @@ def api_reason_start(code):
                 _update_job(job_id, status="error",
                             message=f"調査中にエラーが発生しました: {e}")
 
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
+        _reason_pool.submit(_run)
         return jsonify({"ok": True, "job_id": job_id})
     except Exception as e:
         logging.exception("理由調査開始エラー: %s", code)
