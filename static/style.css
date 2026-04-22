@@ -603,14 +603,19 @@ header .badge-auto {
 }
 .rc-body li {
   display: flex;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 6px;
   margin-bottom: 8px;
-  line-height: 1.5;
+  line-height: 1.6;
+  font-size: 0.85rem;
 }
 .rc-body li::before {
   content: "\2022";
   flex-shrink: 0;
-  margin-top: 0;
+  line-height: 1.6;
+}
+.rc-body li > * {
+  flex: 1;
 }
 .rc-no-material {
   color: #f0ad4e;
