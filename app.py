@@ -331,6 +331,7 @@ def screen_worker(ticker: str, settings: dict) -> list[dict]:
             if name is None:
                 name = get_ticker_name(ticker)
 
+            turnover = round(today_volume * current / 100_000_000, 1)
             results.append({
                 "ticker": ticker,
                 "name": name,
@@ -339,6 +340,7 @@ def screen_worker(ticker: str, settings: dict) -> list[dict]:
                 "cum_change": round(cum_change, 2),
                 "max_wick": round(max_wick, 1),
                 "days": n_days,
+                "turnover": turnover,
             })
 
         return results
@@ -620,6 +622,7 @@ def fetch_pts_stocks(threshold: float = PTS_THRESHOLD) -> list[dict]:
                 # JPXキャッシュから日本語銘柄名を取得
                 jpx_name = _jpx_names.get(ticker, "")
                 s["name"] = jpx_name if jpx_name and jpx_name != "-" else "-"
+                s["turnover"] = round(vol * s["pts_price"] / 100_000_000, 1)
                 all_stocks.append(s)
 
     all_stocks.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
@@ -665,6 +668,7 @@ def _check_intraday(ticker: str, threshold: float) -> dict | None:
         if not name or name == "-":
             name = get_ticker_name(ticker)
 
+        turnover = round(volume * current / 100_000_000, 1)
         return {
             "code": ticker.replace(".T", ""),
             "name": name,
@@ -672,6 +676,7 @@ def _check_intraday(ticker: str, threshold: float) -> dict | None:
             "current": round(current, 1),
             "change_pct": round(change_pct, 2),
             "volume": int(volume),
+            "turnover": turnover,
         }
     except Exception:
         return None

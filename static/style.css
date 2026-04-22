@@ -306,6 +306,13 @@ header .badge-auto {
   white-space: nowrap;
 }
 
+.watchlist-turnover {
+  color: var(--muted);
+  font-size: 11px;
+  font-family: monospace;
+  white-space: nowrap;
+}
+
 .watchlist-remove {
   background: none;
   border: none;

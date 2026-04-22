@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=9">
+  <link rel="stylesheet" href="/static/style.css?v=10">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -38,6 +38,7 @@
             <th>通常終値</th>
             <th>PTS価格</th>
             <th>前日比</th>
+            <th style="text-align:right">売買代金</th>
             <th></th>
           </tr>
         </thead>
@@ -74,6 +75,7 @@
             <th style="text-align:right">現在値</th>
             <th style="text-align:right">変動率</th>
             <th style="text-align:right">出来高</th>
+            <th style="text-align:right">売買代金</th>
             <th></th>
           </tr>
         </thead>
@@ -177,6 +179,7 @@
           <th style="text-align:right">現在値</th>
           <th style="text-align:right">累積騰落率</th>
           <th style="text-align:right">最大上髭</th>
+          <th style="text-align:right">売買代金</th>
           <th></th>
         </tr></thead>
         <tbody id="result-tbody-1"></tbody>
@@ -236,7 +239,7 @@ function loadWatchlist() {
   try {
     const saved = JSON.parse(localStorage.getItem(WATCHLIST_KEY));
     if (Array.isArray(saved)) {
-      for (const item of saved) watchlist.set(item.ticker, item.name);
+      for (const item of saved) watchlist.set(item.ticker, {name: item.name, turnover: item.turnover || null});
     }
   } catch {}
   renderWatchlist();
@@ -244,15 +247,15 @@ function loadWatchlist() {
 
 function saveWatchlist() {
   const arr = [];
-  for (const [ticker, name] of watchlist) arr.push({ticker, name});
+  for (const [ticker, info] of watchlist) arr.push({ticker, name: info.name, turnover: info.turnover});
   localStorage.setItem(WATCHLIST_KEY, JSON.stringify(arr));
 }
 
-function toggleWatchlist(ticker, name) {
+function toggleWatchlist(ticker, name, turnover) {
   if (watchlist.has(ticker)) {
     watchlist.delete(ticker);
   } else {
-    watchlist.set(ticker, name);
+    watchlist.set(ticker, {name, turnover: turnover || null});
   }
   saveWatchlist();
   renderWatchlist();
@@ -280,7 +283,7 @@ function renderWatchlist() {
   count.textContent = `${watchlist.size} 銘柄`;
   body.innerHTML = "";
 
-  for (const [ticker, name] of watchlist) {
+  for (const [ticker, info] of watchlist) {
     const code = displayCode(ticker);
     const item = document.createElement("span");
     item.className = "watchlist-item";
@@ -288,19 +291,29 @@ function renderWatchlist() {
     const link = document.createElement("a");
     link.className = "ticker-link";
     link.textContent = code;
-    link.onclick = () => showChart(ticker, name);
+    link.onclick = () => showChart(ticker, info.name);
 
     const nameSpan = document.createElement("span");
     nameSpan.className = "watchlist-name";
-    nameSpan.textContent = name;
+    nameSpan.textContent = info.name;
+
+    if (info.turnover != null) {
+      const turnoverSpan = document.createElement("span");
+      turnoverSpan.className = "watchlist-turnover";
+      turnoverSpan.textContent = info.turnover.toLocaleString("ja-JP") + "億";
+      item.appendChild(link);
+      item.appendChild(nameSpan);
+      item.appendChild(turnoverSpan);
+    } else {
+      item.appendChild(link);
+      item.appendChild(nameSpan);
+    }
 
     const removeBtn = document.createElement("button");
     removeBtn.className = "watchlist-remove";
     removeBtn.innerHTML = "&times;";
-    removeBtn.onclick = () => toggleWatchlist(ticker, name);
+    removeBtn.onclick = () => toggleWatchlist(ticker, info.name);
 
-    item.appendChild(link);
-    item.appendChild(nameSpan);
     item.appendChild(removeBtn);
     body.appendChild(item);
   }
@@ -552,7 +565,7 @@ async function pollProgress(jobId) {
       for (const day of enabledDays) {
         if (tabHits[day] === 0) {
           document.getElementById(`result-tbody-${day}`).innerHTML =
-            '<tr><td colspan="8" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
+            '<tr><td colspan="9" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
         }
       }
     } else if (d.status === "lost") {
@@ -602,7 +615,7 @@ function appendRow(r) {
   starBtn.className = "star-btn" + (isStarred ? " active" : "");
   starBtn.dataset.ticker = r.ticker;
   starBtn.textContent = "\u2605";
-  starBtn.onclick = () => toggleWatchlist(r.ticker, r.name);
+  starBtn.onclick = () => toggleWatchlist(r.ticker, r.name, r.turnover);
   starTd.appendChild(starBtn);
   tr.appendChild(starTd);
 
@@ -614,6 +627,7 @@ function appendRow(r) {
     <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
     <td class="change down">${chgSign}${r.cum_change.toFixed(1)}%</td>
     <td class="price">${r.max_wick.toFixed(1)}%</td>
+    <td class="price">${r.turnover != null ? r.turnover.toLocaleString("ja-JP") + "億" : "-"}</td>
     <td><button class="btn-reason" onclick="investigateReason(this, '${displayCode(r.ticker)}', '${r.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...rest.content.children);
@@ -748,6 +762,7 @@ function appendPtsRow(s) {
     <td class="price">${s.close ? s.close.toLocaleString("ja-JP") : "-"}</td>
     <td class="price">${s.pts_price ? s.pts_price.toLocaleString("ja-JP") : "-"}</td>
     <td class="change ${cls}">${sign}${s.change_pct.toFixed(2)}%</td>
+    <td class="price">${s.turnover != null ? s.turnover.toLocaleString("ja-JP") + "億" : "-"}</td>
     <td><button class="btn-reason" onclick="investigateReason(this, '${s.code}', '${s.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...tpl.content.children);
@@ -910,6 +925,7 @@ function appendIntradayRow(s) {
     <td class="price">${s.current ? s.current.toLocaleString("ja-JP") : "-"}</td>
     <td class="change ${cls}">${sign}${s.change_pct.toFixed(2)}%</td>
     <td class="price">${s.volume ? s.volume.toLocaleString("ja-JP") : "-"}</td>
+    <td class="price">${s.turnover != null ? s.turnover.toLocaleString("ja-JP") + "億" : "-"}</td>
     <td><button class="btn-reason" onclick="investigateReason(this, '${s.code}', '${s.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...tpl.content.children);
