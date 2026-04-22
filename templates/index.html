@@ -17,6 +17,15 @@
     <span class="badge badge-auto">JPX自動取得</span>
   </header>
 
+  <!-- 注目銘柄 -->
+  <div class="card" id="watchlist-card" style="display:none;">
+    <div class="card-title-row">
+      <div class="card-title" style="margin-bottom:0;">注目銘柄 <span class="hit-count" id="watchlist-count"></span></div>
+      <button class="btn-clear" onclick="clearWatchlist()">すべて解除</button>
+    </div>
+    <div id="watchlist-body" class="watchlist-body"></div>
+  </div>
+
   <!-- PTS大幅変動銘柄 -->
   <div class="card" id="pts-card">
     <div class="card-title-row">
@@ -88,15 +97,6 @@
         <tbody id="intraday-tbody"></tbody>
       </table>
     </div>
-  </div>
-
-  <!-- 注目銘柄 -->
-  <div class="card" id="watchlist-card" style="display:none;">
-    <div class="card-title-row">
-      <div class="card-title" style="margin-bottom:0;">注目銘柄 <span class="hit-count" id="watchlist-count"></span></div>
-      <button class="btn-clear" onclick="clearWatchlist()">すべて解除</button>
-    </div>
-    <div id="watchlist-body" class="watchlist-body"></div>
   </div>
 
   <!-- 実行パネル -->
