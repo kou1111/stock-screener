@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=7">
+  <link rel="stylesheet" href="/static/style.css?v=8">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -919,7 +919,6 @@ function appendIntradayRow(s) {
 /* ── 理由調査結果のフォーマット ────��──────────────── */
 function formatReasonHtml(text) {
   const sections = [
-    {key: "本日の株価動向", icon: "&#x1F4C8;", cls: "rc-price"},
     {key: "変動の主な理由", icon: "&#x1F50D;", cls: "rc-reason"},
     {key: "上昇の主な理由", icon: "&#x1F50D;", cls: "rc-reason"},
     {key: "下落の主な理由", icon: "&#x1F50D;", cls: "rc-reason"},

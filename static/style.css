@@ -553,7 +553,7 @@ header .badge-auto {
 /* ── 理由カードグリッド ──────────────────────────── */
 .rc-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 .rc-card {
@@ -563,7 +563,6 @@ header .badge-auto {
   padding: 10px 12px;
   border-top: 2px solid var(--border);
 }
-.rc-card.rc-price    { border-top-color: var(--accent); }
 .rc-card.rc-reason   { border-top-color: var(--red); }
 .rc-card.rc-structure{ border-top-color: #f39c12; }
 .rc-card.rc-outlook  { border-top-color: var(--green); }
