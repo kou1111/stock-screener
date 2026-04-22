@@ -391,12 +391,15 @@ header .badge-auto {
 .change.down { color: var(--blue); }
 
 .spark-cell {
-  padding: 4px 8px !important;
+  padding: 4px 6px !important;
   vertical-align: middle;
   line-height: 0;
+  width: 162px;
+  min-width: 162px;
 }
-.spark-cell svg {
+.spark-cell canvas {
   display: block;
+  border-radius: 3px;
 }
 
 .empty-state {

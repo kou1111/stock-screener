@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=16">
+  <link rel="stylesheet" href="/static/style.css?v=17">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -36,12 +36,12 @@
             <th style="width:32px"></th>
             <th>銘柄</th>
             <th>銘柄名</th>
+            <th>20日</th>
             <th>通常終値</th>
             <th>PTS価格</th>
             <th>前日比</th>
             <th style="text-align:right">売買代金</th>
             <th style="text-align:right">時価総額</th>
-            <th>20日</th>
             <th></th>
           </tr>
         </thead>
@@ -75,13 +75,13 @@
             <th style="width:32px"></th>
             <th>銘柄</th>
             <th>銘柄名</th>
+            <th>20日</th>
             <th style="text-align:right">始値</th>
             <th style="text-align:right">現在値</th>
             <th style="text-align:right">変動率</th>
             <th style="text-align:right">出来高</th>
             <th style="text-align:right">売買代金</th>
             <th style="text-align:right">時価総額</th>
-            <th>20日</th>
             <th></th>
           </tr>
         </thead>
@@ -181,13 +181,13 @@
         <thead><tr>
           <th style="width:32px"></th>
           <th>銘柄</th><th>銘柄名</th>
+          <th>20日</th>
           <th id="ref-close-th" style="text-align:right">1日前終値</th>
           <th style="text-align:right">現在値</th>
           <th style="text-align:right">累積騰落率</th>
           <th style="text-align:right">最大上髭</th>
           <th style="text-align:right">売買代金</th>
           <th style="text-align:right">時価総額</th>
-          <th>20日</th>
           <th></th>
         </tr></thead>
         <tbody id="result-tbody-1"></tbody>
@@ -472,18 +472,47 @@ function formatMarketCap(val) {
   return Math.round(oku).toLocaleString("ja-JP") + "億";
 }
 
-function sparkSvg(closes) {
-  if (!closes || closes.length < 2) return "";
-  const W = 120, H = 40, pad = 2;
-  const min = Math.min(...closes), max = Math.max(...closes);
-  const range = max - min || 1;
-  const pts = closes.map((v, i) => {
-    const x = pad + (i / (closes.length - 1)) * (W - pad * 2);
-    const y = pad + (1 - (v - min) / range) * (H - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" ");
-  const color = closes[closes.length - 1] >= closes[0] ? "var(--green)" : "var(--red)";
-  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/></svg>`;
+/* sparkCandle: OHLC配列 [[o,h,l,c],...] → ミニローソク足 canvas */
+function sparkCandle(ohlc, el) {
+  if (!ohlc || ohlc.length < 2 || !el) return;
+  const W = 150, H = 80, pad = 4;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  canvas.style.display = "block";
+  el.appendChild(canvas);
+  const ctx = canvas.getContext("2d");
+
+  let lo = Infinity, hi = -Infinity;
+  for (const [o,h,l,c] of ohlc) {
+    if (h > hi) hi = h;
+    if (l < lo) lo = l;
+  }
+  const range = hi - lo || 1;
+  const n = ohlc.length;
+  const barW = Math.max(1, ((W - pad * 2) / n) * 0.6);
+  const gap = (W - pad * 2) / n;
+
+  function yOf(v) { return pad + (1 - (v - lo) / range) * (H - pad * 2); }
+
+  const green = "#3fb950", red = "#f85149";
+  for (let i = 0; i < n; i++) {
+    const [o,h,l,c] = ohlc[i];
+    const x = pad + gap * i + gap / 2;
+    const color = c >= o ? green : red;
+    // ヒゲ
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, yOf(h));
+    ctx.lineTo(x, yOf(l));
+    ctx.stroke();
+    // 実体
+    const top = yOf(Math.max(o, c));
+    const bot = yOf(Math.min(o, c));
+    const bodyH = Math.max(1, bot - top);
+    ctx.fillStyle = color;
+    ctx.fillRect(x - barW / 2, top, barW, bodyH);
+  }
 }
 
 /* ── スクリーニング実行 ──────────────────────────── */
@@ -649,16 +678,17 @@ function appendRow(r) {
   rest.innerHTML = `
     <td><a class="ticker-link" onclick="showChart('${r.ticker}', '${r.name.replace(/'/g, "\\'")}')">${displayCode(r.ticker)}</a></td>
     <td>${r.name}</td>
+    <td class="spark-cell"></td>
     <td class="price">${r.ref_close.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
     <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
     <td class="change down">${chgSign}${r.cum_change.toFixed(1)}%</td>
     <td class="price">${r.max_wick.toFixed(1)}%</td>
     <td class="price">${r.turnover != null ? r.turnover.toLocaleString("ja-JP") + "億" : "-"}</td>
     <td class="price">${formatMarketCap(r.market_cap)}</td>
-    <td class="spark-cell">${sparkSvg(r.spark)}</td>
     <td><button class="btn-reason" onclick="investigateReason(this, '${displayCode(r.ticker)}', '${r.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...rest.content.children);
+  sparkCandle(r.spark, tr.querySelector(".spark-cell"));
   tbody.appendChild(tr);
 }
 
@@ -799,15 +829,16 @@ function appendPtsRow(s) {
   tpl.innerHTML = `
     <td><a class="ticker-link" onclick="showChart('${ticker}', '${s.name.replace(/'/g, "\\'")}')">${s.code}</a></td>
     <td>${s.name}</td>
+    <td class="spark-cell"></td>
     <td class="price">${s.close ? s.close.toLocaleString("ja-JP") : "-"}</td>
     <td class="price">${s.pts_price ? s.pts_price.toLocaleString("ja-JP") : "-"}</td>
     <td class="change ${cls}">${sign}${s.change_pct.toFixed(2)}%</td>
     <td class="price">${s.turnover != null ? s.turnover.toLocaleString("ja-JP") + "億" : "-"}</td>
     <td class="price">${formatMarketCap(s.market_cap)}</td>
-    <td class="spark-cell">${sparkSvg(s.spark)}</td>
     <td><button class="btn-reason" onclick="investigateReason(this, '${s.code}', '${s.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...tpl.content.children);
+  sparkCandle(s.spark, tr.querySelector(".spark-cell"));
   tbody.appendChild(tr);
 }
 
@@ -975,16 +1006,17 @@ function appendIntradayRow(s) {
   tpl.innerHTML = `
     <td><a class="ticker-link" onclick="showChart('${ticker}', '${s.name.replace(/'/g, "\\'")}')">${s.code}</a></td>
     <td>${s.name}</td>
+    <td class="spark-cell"></td>
     <td class="price">${s.open ? s.open.toLocaleString("ja-JP") : "-"}</td>
     <td class="price">${s.current ? s.current.toLocaleString("ja-JP") : "-"}</td>
     <td class="change ${cls}">${sign}${s.change_pct.toFixed(2)}%</td>
     <td class="price">${s.volume ? s.volume.toLocaleString("ja-JP") : "-"}</td>
     <td class="price">${s.turnover != null ? s.turnover.toLocaleString("ja-JP") + "億" : "-"}</td>
     <td class="price">${formatMarketCap(s.market_cap)}</td>
-    <td class="spark-cell">${sparkSvg(s.spark)}</td>
     <td><button class="btn-reason" onclick="investigateReason(this, '${s.code}', '${s.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...tpl.content.children);
+  sparkCandle(s.spark, tr.querySelector(".spark-cell"));
   tbody.appendChild(tr);
 }
 

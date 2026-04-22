@@ -332,7 +332,7 @@ def screen_worker(ticker: str, settings: dict) -> list[dict]:
                 name = get_ticker_name(ticker)
 
             turnover = round(today_volume * current / 100_000_000, 1)
-            spark = df["Close"].tail(20).round(1).tolist()
+            spark = _spark_ohlc(df)
             results.append({
                 "ticker": ticker,
                 "name": name,
@@ -524,6 +524,18 @@ PTS_URLS = {
 PTS_THRESHOLD = 3.0  # ±3%
 
 
+def _spark_ohlc(df, n=20) -> list[list]:
+    """直近n日分のOHLCをリストで返す: [[o,h,l,c], ...]"""
+    try:
+        tail = df.tail(n)
+        cols = ["Open", "High", "Low", "Close"]
+        if not all(c in tail.columns for c in cols):
+            return []
+        return tail[cols].round(1).values.tolist()
+    except Exception:
+        return []
+
+
 def _parse_number(text: str) -> float:
     """カンマ付き数値文字列をfloatに変換"""
     return float(text.replace(",", "").strip())
@@ -632,7 +644,7 @@ def fetch_pts_stocks(threshold: float = PTS_THRESHOLD) -> list[dict]:
                 except Exception:
                     mcap = 0
                 # スパークライン
-                spark = hist["Close"].dropna().tail(20).round(1).tolist() if hist is not None and not hist.empty else []
+                spark = _spark_ohlc(hist) if hist is not None and not hist.empty else []
                 # JPXキャッシュから日本語銘柄名を取得
                 jpx_name = _jpx_names.get(ticker, "")
                 s["name"] = jpx_name if jpx_name and jpx_name != "-" else "-"
@@ -687,7 +699,7 @@ def _check_intraday(ticker: str, threshold: float) -> dict | None:
         turnover = round(volume * current / 100_000_000, 1)
         try:
             dfd = tk.history(period="1mo", interval="1d", auto_adjust=True)
-            spark = dfd["Close"].dropna().tail(20).round(1).tolist() if not dfd.empty else []
+            spark = _spark_ohlc(dfd) if not dfd.empty else []
         except Exception:
             spark = []
         return {
