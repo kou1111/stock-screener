@@ -16,7 +16,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import plotly
 import plotly.graph_objects as go
@@ -33,11 +32,6 @@ JPX_URL = "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001v
 MIN_MARKET_CAP = 7_000_000_000  # 70億円
 MAX_WORKERS = 50
 LOOKBACK_DAYS = 60
-
-# チャート用: 一方的下落検知パラメータ
-SELLOFF_VOLATILITY_MULT = 1.5
-SELLOFF_BOUNCE_RATIO = 0.30
-SELLOFF_TAIL_BARS = 5
 
 # JPX 銘柄名キャッシュ
 _jpx_names: dict[str, str] = {}
@@ -410,86 +404,32 @@ def _run_screening(job_id: str, settings: dict, resume_data: dict | None = None)
     _update_job(job_id, status="done", message="完了")
 
 
-# ── 一方的下落の検知 (チャート用) ─────────────────
-def detect_selloff(ticker: str) -> dict | None:
-    try:
-        tk = yf.Ticker(ticker)
-        df5 = tk.history(period="1d", interval="5m", auto_adjust=True)
-
-        if df5.empty:
-            df5 = tk.history(period="5d", interval="5m", auto_adjust=True)
-            if df5.empty:
-                return None
-            last_date = df5.index[-1].date()
-            df5 = df5[df5.index.date == last_date]
-
-        df5 = df5[["Open", "High", "Low", "Close"]].dropna()
-        if len(df5) < SELLOFF_TAIL_BARS + 1:
-            return None
-
-        highs = df5["High"].values.flatten()
-        closes = df5["Close"].values.flatten()
-        opens = df5["Open"].values.flatten()
-
-        day_high = float(np.max(highs))
-        current = float(closes[-1])
-        drop = day_high - current
-
-        if drop <= 0:
-            return None
-
-        daily = tk.history(period="30d", interval="1d", auto_adjust=True)
-        if daily.empty or len(daily) < 5:
-            return None
-        intraday_ranges = (daily["High"] - daily["Low"]).values.flatten()
-        range_std = float(np.std(intraday_ranges))
-
-        if range_std <= 0 or drop < range_std * SELLOFF_VOLATILITY_MULT:
-            return None
-
-        peak_idx = int(np.argmax(highs))
-
-        for i in range(peak_idx + 1, len(df5)):
-            candle_up = float(closes[i]) - float(opens[i])
-            if candle_up > 0 and candle_up >= drop * SELLOFF_BOUNCE_RATIO:
-                return None
-
-        for i in range(-SELLOFF_TAIL_BARS, 0):
-            if float(closes[i]) > float(opens[i]):
-                return None
-
-        drop_pct = drop / day_high * 100
-        return {
-            "drop": round(drop_pct, 1),
-            "peak_idx": peak_idx,
-            "end_idx": len(df5) - 1,
-        }
-    except Exception:
-        return None
-
-
 # ── チャート生成 ───────────────────────────────────
-def build_chart_json(ticker: str) -> str | None:
+def build_chart_json(ticker: str, interval: str = "5m") -> str | None:
     tk = yf.Ticker(ticker)
-    df = tk.history(period="1d", interval="5m", auto_adjust=True)
 
-    if df.empty:
-        df = tk.history(period="5d", interval="5m", auto_adjust=True)
+    if interval == "1d":
+        df = tk.history(period="6mo", interval="1d", auto_adjust=True)
+        ma_windows = [25, 75]
+        ma_colors = ["#f39c12", "#9b59b6"]
+        time_fmt = "%m/%d"
+    else:
+        df = tk.history(period="1d", interval="5m", auto_adjust=True)
         if df.empty:
-            return None
-        last_date = df.index[-1].date()
-        df = df[df.index.date == last_date]
-        if df.empty:
-            return None
+            df = tk.history(period="5d", interval="5m", auto_adjust=True)
+            if df.empty:
+                return None
+            last_date = df.index[-1].date()
+            df = df[df.index.date == last_date]
+            if df.empty:
+                return None
+        ma_windows = [5, 25]
+        ma_colors = ["#f39c12", "#9b59b6"]
+        time_fmt = "%H:%M"
 
     df = df[["Open", "High", "Low", "Close", "Volume"]].dropna()
     if len(df) < 2:
         return None
-
-    chart_date = df.index[-1].strftime("%Y/%m/%d")
-
-    ma_len = min(25, len(df))
-    ma = df["Close"].rolling(window=ma_len).mean()
 
     colors = [
         "#e74c3c" if c >= o else "#3498db"
@@ -514,11 +454,14 @@ def build_chart_json(ticker: str) -> str | None:
         name="価格",
     ), row=1, col=1)
 
-    fig.add_trace(go.Scatter(
-        x=df.index, y=ma,
-        line=dict(color="#f39c12", width=1.5),
-        name=f"MA{ma_len}",
-    ), row=1, col=1)
+    for w, c in zip(ma_windows, ma_colors):
+        ma_len = min(w, len(df))
+        ma = df["Close"].rolling(window=ma_len).mean()
+        fig.add_trace(go.Scatter(
+            x=df.index, y=ma,
+            line=dict(color=c, width=1.5),
+            name=f"MA{w}",
+        ), row=1, col=1)
 
     fig.add_trace(go.Bar(
         x=df.index, y=df["Volume"],
@@ -527,31 +470,13 @@ def build_chart_json(ticker: str) -> str | None:
         showlegend=False,
     ), row=2, col=1)
 
-    selloff = detect_selloff(ticker)
-    shapes = []
-    if selloff:
-        s_idx = selloff["peak_idx"]
-        e_idx = selloff["end_idx"]
-        shapes.append(dict(
-            type="rect", xref="x", yref="y",
-            x0=max(0, s_idx - 0.5),
-            x1=min(len(df) - 1, e_idx + 0.5),
-            y0=float(df["Low"].iloc[s_idx:e_idx + 1].min()) * 0.999,
-            y1=float(df["High"].iloc[s_idx:e_idx + 1].max()) * 1.001,
-            fillcolor="rgba(248, 81, 73, 0.15)",
-            line=dict(color="rgba(248, 81, 73, 0.5)", width=1, dash="dot"),
-            layer="below",
-        ))
-
     fig.update_layout(
-        title=dict(text=f"{ticker.replace('.T', '')}  ({chart_date})", font=dict(size=16)),
         template="plotly_dark",
         height=560,
-        margin=dict(l=50, r=30, t=60, b=30),
+        margin=dict(l=50, r=30, t=30, b=30),
         xaxis_rangeslider_visible=False,
         showlegend=True,
         legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center"),
-        shapes=shapes,
     )
     fig.update_xaxes(type="category", nticks=10, row=1, col=1)
     fig.update_xaxes(type="category", nticks=10, row=2, col=1)
@@ -559,7 +484,7 @@ def build_chart_json(ticker: str) -> str | None:
     fig.update_yaxes(title_text="出来高", row=2, col=1)
 
     tickvals = list(range(0, len(df), max(1, len(df) // 10)))
-    ticktext = [df.index[i].strftime("%H:%M") for i in tickvals]
+    ticktext = [df.index[i].strftime(time_fmt) for i in tickvals]
     fig.update_xaxes(tickvals=tickvals, ticktext=ticktext, row=2, col=1)
     fig.update_xaxes(tickvals=tickvals, ticktext=ticktext, row=1, col=1)
 
@@ -646,7 +571,10 @@ def api_progress_reset():
 
 @app.route("/api/chart/<ticker>")
 def api_chart(ticker):
-    chart_json = build_chart_json(ticker)
+    interval = request.args.get("interval", "5m")
+    if interval not in ("5m", "1d"):
+        interval = "5m"
+    chart_json = build_chart_json(ticker, interval)
     if chart_json is None:
         return jsonify({"ok": False, "error": "チャートデータを取得できませんでした"})
     return jsonify({"ok": True, "chart": json.loads(chart_json)})

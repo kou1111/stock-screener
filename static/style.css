@@ -455,6 +455,37 @@ header .badge-auto {
   align-items: center;
   margin-bottom: 8px;
 }
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.interval-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.interval-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 4px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+.interval-btn + .interval-btn {
+  border-left: 1px solid var(--border);
+}
+.interval-btn:hover {
+  color: var(--text);
+}
+.interval-btn.active {
+  background: var(--accent);
+  color: #000;
+}
 #chart-area .close-btn {
   background: none;
   border: 1px solid var(--border);

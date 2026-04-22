@@ -126,7 +126,13 @@
   <div class="card" id="chart-area">
     <div class="chart-header">
       <div class="card-title" id="chart-title">チャート</div>
-      <button class="close-btn" onclick="closeChart()">閉じる</button>
+      <div class="chart-controls">
+        <div class="interval-toggle">
+          <button class="interval-btn active" data-interval="5m" onclick="switchInterval('5m')">5分足</button>
+          <button class="interval-btn" data-interval="1d" onclick="switchInterval('1d')">日足</button>
+        </div>
+        <button class="close-btn" onclick="closeChart()">閉じる</button>
+      </div>
     </div>
     <div id="plotly-chart"></div>
   </div>
@@ -547,17 +553,40 @@ function appendRow(r) {
 }
 
 /* ── チャート ─────────────────────────────────────── */
-async function showChart(ticker, name) {
+let currentChartTicker = null;
+let currentChartName = null;
+let currentInterval = "5m";
+
+const plotlyConfig = {
+  responsive: true,
+  displayModeBar: true,
+  modeBarButtonsToRemove: [
+    "drawline", "drawopenpath", "drawclosedpath", "drawcircle",
+    "drawrect", "eraseshape", "lasso2d", "select2d", "toImage",
+  ],
+};
+
+const intervalLabels = {"5m": "5分足", "1d": "日足"};
+
+async function showChart(ticker, name, interval) {
+  currentChartTicker = ticker;
+  currentChartName = name;
+  currentInterval = interval || "5m";
   chartArea.classList.add("visible");
   const code = displayCode(ticker);
   const label = name ? `${code}  ${name}` : code;
-  chartTitle.textContent = `${label} チャート読込中...`;
+
+  document.querySelectorAll(".interval-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.interval === currentInterval);
+  });
+
+  chartTitle.textContent = `${label} 読込中...`;
   document.getElementById("plotly-chart").innerHTML =
     '<div style="text-align:center;padding:40px;color:#8b949e"><span class="spinner"></span></div>';
   chartArea.scrollIntoView({behavior: "smooth", block: "start"});
 
   try {
-    const res  = await fetch(`/api/chart/${ticker}`);
+    const res  = await fetch(`/api/chart/${ticker}?interval=${currentInterval}`);
     const data = await res.json();
     if (!data.ok) {
       chartTitle.textContent = `${label} - エラー`;
@@ -565,8 +594,8 @@ async function showChart(ticker, name) {
         `<div class="empty-state">${data.error}</div>`;
       return;
     }
-    chartTitle.textContent = `${label} 5分足チャート`;
-    Plotly.newPlot("plotly-chart", data.chart.data, data.chart.layout, {responsive: true});
+    chartTitle.textContent = `${label} ${intervalLabels[currentInterval]}`;
+    Plotly.newPlot("plotly-chart", data.chart.data, data.chart.layout, plotlyConfig);
   } catch (e) {
     chartTitle.textContent = `${label} - エラー`;
     document.getElementById("plotly-chart").innerHTML =
@@ -574,9 +603,16 @@ async function showChart(ticker, name) {
   }
 }
 
+function switchInterval(interval) {
+  if (!currentChartTicker) return;
+  showChart(currentChartTicker, currentChartName, interval);
+}
+
 function closeChart() {
   chartArea.classList.remove("visible");
   Plotly.purge("plotly-chart");
+  currentChartTicker = null;
+  currentChartName = null;
 }
 </script>
 </body>
