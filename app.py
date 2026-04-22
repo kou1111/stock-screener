@@ -527,14 +527,15 @@ def _parse_number(text: str) -> float:
 
 
 def _scrape_kabutan_pts(url: str) -> list[dict]:
-    """株探モバイル版のPTSランキングページをスクレイピング
+    """株探のPTSランキングページをスクレイピング
 
-    テーブル構造:
-      td[0]: <a>銘柄名</a>
-      td[1]: "コード 市場"
-      td[2]: 通常終値
-      td[3]: PTS価格
-      td[4]: "変動額<br>変動率%"
+    テーブル構造 (2025年〜):
+      th[0]: "銘柄名 コード 市場" (sticky cell)
+      td[1]: 通常終値
+      td[2]: PTS価格
+      td[3]: "変動額 変動率%"
+      td[4]: 出来高
+      td[5-7]: PER, PBR, 利回り
     """
     results = []
     try:
@@ -545,26 +546,26 @@ def _scrape_kabutan_pts(url: str) -> list[dict]:
         soup = BeautifulSoup(resp.text, "html.parser")
 
         for tr in soup.select("table tr"):
-            cells = tr.find_all("td")
-            if len(cells) < 5:
+            cells = tr.find_all(["td", "th"])
+            if len(cells) < 4:
                 continue
 
-            # td[1] から銘柄コードを取得 (例: "5699 東S")
-            code_cell = cells[1].get_text(strip=True)
-            code_match = re.match(r"(\d{3,4}[A-Z]?)", code_cell)
+            # cells[0] (th): "銘柄名 コード 市場" (例: "岡野バ 6492 東S")
+            first_text = cells[0].get_text(strip=True)
+            code_match = re.search(r"(\d{4}[A-Z]?)", first_text)
             if not code_match:
                 continue
             code = code_match.group(1)
 
-            # td[2]: 通常終値, td[3]: PTS価格
+            # cells[1]: 通常終値, cells[2]: PTS価格
             try:
-                close_price = _parse_number(cells[2].get_text(strip=True))
-                pts_price = _parse_number(cells[3].get_text(strip=True))
+                close_price = _parse_number(cells[1].get_text(strip=True))
+                pts_price = _parse_number(cells[2].get_text(strip=True))
             except (ValueError, IndexError):
                 continue
 
-            # td[4]: "変動額\n変動率%"
-            change_text = cells[4].get_text(" ", strip=True)
+            # cells[3]: "変動額 変動率%"
+            change_text = cells[3].get_text(" ", strip=True)
             pct_match = re.search(r"([+-]?\d+\.?\d*)\s*%", change_text)
             if not pct_match:
                 continue
