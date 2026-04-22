@@ -923,18 +923,45 @@ def api_intraday_poll(job_id):
         return jsonify({"ok": False, "error": str(e)})
 
 
-@app.route("/api/reason/<code>")
-def api_reason(code):
-    """銘柄の変動理由を調査"""
-    name = request.args.get("name", code)
+@app.route("/api/reason/start/<code>", methods=["POST"])
+def api_reason_start(code):
+    """理由調査をバックグラウンドで開始"""
     try:
-        reason = investigate_reason(code, name)
-        return jsonify({"ok": True, "reason": reason})
-    except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)})
+        raw = request.get_json(silent=True) or {}
+        name = raw.get("name", code)
+        job_id = _new_job()
+
+        def _run():
+            try:
+                reason = investigate_reason(code, name)
+                _update_job(job_id, status="done", message=reason)
+            except Exception as e:
+                logging.exception("理由調査エラー: %s", code)
+                _update_job(job_id, status="error",
+                            message=f"調査中にエラーが発生しました: {e}")
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return jsonify({"ok": True, "job_id": job_id})
     except Exception as e:
-        logging.exception("理由調査エラー: %s", code)
-        return jsonify({"ok": False, "error": f"調査中にエラーが発生しました: {e}"})
+        logging.exception("理由調査開始エラー: %s", code)
+        return jsonify({"ok": False, "error": str(e)})
+
+
+@app.route("/api/reason/poll/<job_id>")
+def api_reason_poll(job_id):
+    """理由調査の進捗を返す"""
+    try:
+        job = _get_job(job_id)
+        if job is None:
+            return jsonify({"ok": False, "error": "ジョブが見つかりません"}), 404
+        return jsonify({
+            "ok": True,
+            "status": job["status"],
+            "message": job.get("message", ""),
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
 
 
 if __name__ == "__main__":

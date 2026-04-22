@@ -929,18 +929,36 @@ async function investigateReason(btn, code, name) {
 
   const div = document.createElement("div");
   div.className = "reason-text";
-  div.innerHTML = '<span class="spinner"></span> AIが調査中...';
+  div.innerHTML = '<span class="spinner"></span> AIがWeb検索で調査中...';
   btn.parentElement.appendChild(div);
 
   try {
-    const res = await fetch(`/api/reason/${code}?name=${encodeURIComponent(name)}`);
-    if (!res.ok) throw new Error(`サーバーエラー (${res.status})`);
-    const data = await res.json();
-    if (!data.ok) {
-      div.textContent = data.error;
-      div.classList.add("reason-error");
-    } else {
-      div.textContent = data.reason;
+    const startRes = await fetch(`/api/reason/start/${code}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name}),
+    });
+    if (!startRes.ok) throw new Error(`サーバーエラー (${startRes.status})`);
+    const startData = await startRes.json();
+    if (!startData.ok) throw new Error(startData.error || "開始に失敗");
+
+    const jobId = startData.job_id;
+    // ポーリングで結果を待つ
+    while (true) {
+      await new Promise(r => setTimeout(r, 2000));
+      const pollRes = await fetch(`/api/reason/poll/${jobId}`);
+      if (!pollRes.ok) continue;
+      const d = await pollRes.json();
+      if (!d.ok) { throw new Error(d.error); }
+      if (d.status === "done") {
+        div.textContent = d.message;
+        break;
+      } else if (d.status === "error") {
+        div.textContent = d.message;
+        div.classList.add("reason-error");
+        break;
+      }
+      // still running — keep polling
     }
   } catch (e) {
     div.textContent = `エラー: ${e.message}`;
