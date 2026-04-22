@@ -622,6 +622,81 @@ def fetch_pts_stocks(threshold: float = PTS_THRESHOLD) -> list[dict]:
     return all_stocks
 
 
+# ── 当日大幅変動銘柄 ─────────────────────────────────
+def _check_intraday(ticker: str, threshold: float) -> dict | None:
+    """1銘柄の当日始値→現在値の変動率をチェック"""
+    try:
+        tk = yf.Ticker(ticker)
+
+        try:
+            mcap = tk.fast_info.get("marketCap", 0) or 0
+        except Exception:
+            mcap = 0
+        if mcap < MIN_MARKET_CAP:
+            return None
+
+        df = tk.history(period="1d", interval="5m")
+        if df.empty:
+            df = tk.history(period="5d", interval="5m")
+            if df.empty:
+                return None
+            last_date = df.index[-1].date()
+            df = df[df.index.date == last_date]
+            if df.empty:
+                return None
+
+        open_price = float(df["Open"].iloc[0])
+        current = float(df["Close"].iloc[-1])
+        volume = float(df["Volume"].sum())
+
+        if volume <= MIN_VOLUME or open_price <= 0:
+            return None
+
+        change_pct = (current - open_price) / open_price * 100
+
+        if abs(change_pct) < threshold:
+            return None
+
+        name = _jpx_names.get(ticker, "")
+        if not name or name == "-":
+            name = get_ticker_name(ticker)
+
+        return {
+            "code": ticker.replace(".T", ""),
+            "name": name,
+            "open": round(open_price, 1),
+            "current": round(current, 1),
+            "change_pct": round(change_pct, 2),
+            "volume": int(volume),
+        }
+    except Exception:
+        return None
+
+
+def fetch_intraday_movers(threshold: float = 3.0) -> list[dict]:
+    """JPXプライム市場銘柄（時価総額70億円以上）で当日大幅変動銘柄を抽出"""
+    if not _jpx_names:
+        try:
+            fetch_jpx_tickers()
+        except Exception:
+            pass
+
+    tickers = fetch_jpx_tickers()
+    logging.info("当日変動スキャン開始: %d 銘柄 (閾値=±%.1f%%)", len(tickers), threshold)
+
+    results = []
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(_check_intraday, t, threshold): t for t in tickers}
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                results.append(result)
+
+    results.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
+    logging.info("当日変動スキャン完了: %d 件検知", len(results))
+    return results
+
+
 # ── 変動理由調査 ─────────────────────────────────────
 def investigate_reason(code: str, name: str) -> str:
     """Anthropic API (Extended Thinking) + web_search で銘柄の変動理由を調査"""
@@ -769,6 +844,18 @@ def api_pts():
         return jsonify({"ok": True, "stocks": stocks})
     except Exception as e:
         logging.exception("PTS取得エラー")
+        return jsonify({"ok": False, "error": str(e)})
+
+
+@app.route("/api/intraday")
+def api_intraday():
+    """当日大幅変動銘柄を取得"""
+    try:
+        threshold = float(request.args.get("threshold", 3.0))
+        stocks = fetch_intraday_movers(threshold)
+        return jsonify({"ok": True, "stocks": stocks})
+    except Exception as e:
+        logging.exception("当日変動取得エラー")
         return jsonify({"ok": False, "error": str(e)})
 
 
