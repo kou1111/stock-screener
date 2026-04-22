@@ -141,6 +141,7 @@
           <th style="text-align:right">現在値</th>
           <th style="text-align:right">累積騰落率</th>
           <th style="text-align:right">最大上髭</th>
+          <th></th>
         </tr></thead>
         <tbody id="result-tbody-1"></tbody>
         <tbody id="result-tbody-2" class="hidden-tab"></tbody>
@@ -514,7 +515,7 @@ async function pollProgress(jobId) {
       for (const day of enabledDays) {
         if (tabHits[day] === 0) {
           document.getElementById(`result-tbody-${day}`).innerHTML =
-            '<tr><td colspan="7" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
+            '<tr><td colspan="8" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
         }
       }
     } else if (d.status === "lost") {
@@ -576,6 +577,7 @@ function appendRow(r) {
     <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
     <td class="change down">${chgSign}${r.cum_change.toFixed(1)}%</td>
     <td class="price">${r.max_wick.toFixed(1)}%</td>
+    <td><button class="btn-reason" onclick="investigateReason(this, '${displayCode(r.ticker)}', '${r.name.replace(/'/g, "\\'")}')">理由を調べる</button></td>
   `;
   tr.append(...rest.content.children);
   tbody.appendChild(tr);
@@ -732,7 +734,7 @@ async function investigateReason(btn, code, name) {
   btn.parentElement.appendChild(div);
 
   try {
-    const res = await fetch(`/api/pts/reason/${code}?name=${encodeURIComponent(name)}`);
+    const res = await fetch(`/api/reason/${code}?name=${encodeURIComponent(name)}`);
     const data = await res.json();
     if (!data.ok) {
       div.textContent = data.error;

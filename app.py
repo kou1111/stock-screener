@@ -622,18 +622,18 @@ def fetch_pts_stocks(threshold: float = PTS_THRESHOLD) -> list[dict]:
     return all_stocks
 
 
-# ── PTS変動理由調査 ──────────────────────────────────
+# ── 変動理由調査 ─────────────────────────────────────
 def investigate_reason(code: str, name: str) -> str:
-    """Anthropic API + web_search で銘柄の変動理由を調査"""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    """OpenAI API (gpt-4o) + web_search で銘柄の変動理由を調査"""
+    api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY が設定されていません")
+        raise ValueError("OPENAI_API_KEY が設定されていません")
 
-    import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
 
     prompt = (
-        f"日本株 {code} ({name}) がPTS（夜間取引）で大幅に変動しています。\n"
+        f"日本株 {code} ({name}) が大幅に変動しています。\n"
         f"以下を調べて、変動の理由を日本語で簡潔に説明してください：\n"
         f"1. Yahoo ファイナンス ({code})のニュース\n"
         f"2. TDNet（適時開示情報）の最新開示\n"
@@ -641,29 +641,13 @@ def investigate_reason(code: str, name: str) -> str:
         f"3〜5文で要約してください。"
     )
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
-        tools=[{
-            "type": "web_search_20250305",
-            "name": "web_search",
-            "max_uses": 5,
-            "user_location": {
-                "type": "approximate",
-                "country": "JP",
-                "timezone": "Asia/Tokyo",
-            },
-        }],
+    response = client.responses.create(
+        model="gpt-4o",
+        tools=[{"type": "web_search_preview"}],
+        input=prompt,
     )
 
-    # テキストブロックを結合
-    texts = []
-    for block in response.content:
-        if hasattr(block, "text"):
-            texts.append(block.text)
-
-    return "\n".join(texts) if texts else "理由を特定できませんでした。"
+    return response.output_text or "理由を特定できませんでした。"
 
 
 # ── ルーティング ───────────────────────────────────
@@ -767,9 +751,9 @@ def api_pts():
         return jsonify({"ok": False, "error": str(e)})
 
 
-@app.route("/api/pts/reason/<code>")
-def api_pts_reason(code):
-    """PTS変動理由を調査"""
+@app.route("/api/reason/<code>")
+def api_reason(code):
+    """銘柄の変動理由を調査"""
     name = request.args.get("name", code)
     try:
         reason = investigate_reason(code, name)
