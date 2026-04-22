@@ -33,6 +33,7 @@
       <table class="result-table" id="pts-table">
         <thead>
           <tr>
+            <th style="width:32px"></th>
             <th>銘柄</th>
             <th>銘柄名</th>
             <th>通常終値</th>
@@ -71,6 +72,7 @@
       <table class="result-table" id="intraday-table">
         <thead>
           <tr>
+            <th style="width:32px"></th>
             <th>銘柄</th>
             <th>銘柄名</th>
             <th style="text-align:right">始値</th>
@@ -777,13 +779,25 @@ async function fetchPts() {
 function appendPtsRow(s) {
   const tbody = document.getElementById("pts-tbody");
   const tr = document.createElement("tr");
+  const ticker = s.code + ".T";
   const isUp = s.change_pct > 0;
   const sign = isUp ? "+" : "";
   const cls = isUp ? "up" : "down";
 
+  const isStarred = watchlist.has(ticker);
+  const starTd = document.createElement("td");
+  starTd.className = "star-cell";
+  const starBtn = document.createElement("button");
+  starBtn.className = "star-btn" + (isStarred ? " active" : "");
+  starBtn.dataset.ticker = ticker;
+  starBtn.textContent = "\u2605";
+  starBtn.onclick = () => toggleWatchlist(ticker, s.name, s.turnover, s.market_cap, s.spark);
+  starTd.appendChild(starBtn);
+  tr.appendChild(starTd);
+
   const tpl = document.createElement("template");
   tpl.innerHTML = `
-    <td><span class="ticker-link" style="cursor:default">${s.code}</span></td>
+    <td><a class="ticker-link" onclick="showChart('${ticker}', '${s.name.replace(/'/g, "\\'")}')">${s.code}</a></td>
     <td>${s.name}</td>
     <td class="price">${s.close ? s.close.toLocaleString("ja-JP") : "-"}</td>
     <td class="price">${s.pts_price ? s.pts_price.toLocaleString("ja-JP") : "-"}</td>
@@ -941,13 +955,25 @@ async function pollIntraday(jobId) {
 function appendIntradayRow(s) {
   const tbody = document.getElementById("intraday-tbody");
   const tr = document.createElement("tr");
+  const ticker = s.code + ".T";
   const isUp = s.change_pct > 0;
   const sign = isUp ? "+" : "";
   const cls = isUp ? "up" : "down";
 
+  const isStarred = watchlist.has(ticker);
+  const starTd = document.createElement("td");
+  starTd.className = "star-cell";
+  const starBtn = document.createElement("button");
+  starBtn.className = "star-btn" + (isStarred ? " active" : "");
+  starBtn.dataset.ticker = ticker;
+  starBtn.textContent = "\u2605";
+  starBtn.onclick = () => toggleWatchlist(ticker, s.name, s.turnover, s.market_cap, s.spark);
+  starTd.appendChild(starBtn);
+  tr.appendChild(starTd);
+
   const tpl = document.createElement("template");
   tpl.innerHTML = `
-    <td><a class="ticker-link" onclick="showChart('${s.code}.T', '${s.name.replace(/'/g, "\\'")}')">${s.code}</a></td>
+    <td><a class="ticker-link" onclick="showChart('${ticker}', '${s.name.replace(/'/g, "\\'")}')">${s.code}</a></td>
     <td>${s.name}</td>
     <td class="price">${s.open ? s.open.toLocaleString("ja-JP") : "-"}</td>
     <td class="price">${s.current ? s.current.toLocaleString("ja-JP") : "-"}</td>
