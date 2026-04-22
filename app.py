@@ -205,7 +205,7 @@ def get_ticker_name(ticker: str) -> str:
         return _jpx_names[ticker]
     try:
         info = yf.Ticker(ticker).info
-        return info.get("longName") or info.get("shortName") or ticker
+        return info.get("shortName") or info.get("longName") or ticker
     except Exception:
         return ticker
 
@@ -545,7 +545,7 @@ def build_chart_json(ticker: str) -> str | None:
         ))
 
     fig.update_layout(
-        title=dict(text=f"{ticker}  {name}  ({chart_date})", font=dict(size=16)),
+        title=dict(text=f"{ticker.replace('.T', '')}  {name}  ({chart_date})", font=dict(size=16)),
         template="plotly_dark",
         height=560,
         margin=dict(l=50, r=30, t=60, b=30),
