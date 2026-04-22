@@ -509,7 +509,15 @@ def _parse_number(text: str) -> float:
 
 
 def _scrape_kabutan_pts(url: str) -> list[dict]:
-    """株探モバイル版のPTSランキングページをスクレイピング"""
+    """株探モバイル版のPTSランキングページをスクレイピング
+
+    テーブル構造:
+      td[0]: <a>銘柄名</a>
+      td[1]: "コード 市場"
+      td[2]: 通常終値
+      td[3]: PTS価格
+      td[4]: "変動額<br>変動率%"
+    """
     results = []
     try:
         resp = http_requests.get(url, timeout=15, headers={
@@ -518,71 +526,43 @@ def _scrape_kabutan_pts(url: str) -> list[dict]:
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # テーブル行を探索
         for tr in soup.select("table tr"):
             cells = tr.find_all("td")
-            if len(cells) < 4:
+            if len(cells) < 5:
                 continue
 
-            # 銘柄コードを探す (4桁の数字または英数字)
-            text = tr.get_text(" ", strip=True)
-            code_match = re.search(r"\b(\d{4}[A-Z]?)\b", text)
+            # td[1] から銘柄コードを取得 (例: "5699 東S")
+            code_cell = cells[1].get_text(strip=True)
+            code_match = re.match(r"(\d{3,4}[A-Z]?)", code_cell)
             if not code_match:
                 continue
-
             code = code_match.group(1)
-            # 変動率を探す (±XX.XX%)
-            pct_match = re.search(r"([+-]?\d+\.?\d*)\s*%", text)
-            if not pct_match:
+
+            # td[2]: 通常終値, td[3]: PTS価格
+            try:
+                close_price = _parse_number(cells[2].get_text(strip=True))
+                pts_price = _parse_number(cells[3].get_text(strip=True))
+            except (ValueError, IndexError):
                 continue
 
+            # td[4]: "変動額\n変動率%"
+            change_text = cells[4].get_text(" ", strip=True)
+            pct_match = re.search(r"([+-]?\d+\.?\d*)\s*%", change_text)
+            if not pct_match:
+                continue
             change_pct = float(pct_match.group(1))
 
-            # 銘柄名: 通常はコードの直後のテキスト
-            name = ""
-            for a in tr.find_all("a"):
-                a_text = a.get_text(strip=True)
-                if a_text and not a_text.isdigit() and code not in a_text:
-                    name = a_text
-                    break
-            if not name:
-                # aタグに名前がない場合、最初のセルからテキストを取得
-                first_text = cells[0].get_text(strip=True)
-                name_match = re.sub(r"\d{4}[A-Z]?\s*", "", first_text).strip()
-                if name_match:
-                    name = name_match
-
-            # 価格データを抽出
-            numbers = re.findall(r"[\d,]+\.?\d*", text)
-            # 通常終値とPTS価格を特定 (パターン: 通常終値, PTS価格, 変動額, 変動率%)
-            close_price = 0.0
-            pts_price = 0.0
             change = 0.0
-
-            try:
-                # 変動額を探す
-                change_match = re.search(r"([+-][\d,]+\.?\d*)\s+[+-]?\d+\.?\d*%", text)
-                if change_match:
-                    change = _parse_number(change_match.group(1))
-
-                # 数値リストから価格を特定
-                clean_nums = []
-                for n in numbers:
-                    try:
-                        clean_nums.append(_parse_number(n))
-                    except ValueError:
-                        continue
-
-                if len(clean_nums) >= 2:
-                    # 通常: [通常終値, PTS価格, 変動額, 変動率]
-                    close_price = clean_nums[0]
-                    pts_price = clean_nums[1]
-            except (ValueError, IndexError):
-                pass
+            change_amt = re.search(r"([+-][\d,]+\.?\d*)", change_text)
+            if change_amt:
+                try:
+                    change = _parse_number(change_amt.group(1))
+                except ValueError:
+                    pass
 
             results.append({
                 "code": code,
-                "name": name,
+                "name": "",  # fetch_pts_stocks で JPX名に置換
                 "close": close_price,
                 "pts_price": pts_price,
                 "change": change,
@@ -597,6 +577,13 @@ def _scrape_kabutan_pts(url: str) -> list[dict]:
 
 def fetch_pts_stocks() -> list[dict]:
     """PTS上昇・下落ランキングを取得して±3%以上の銘柄を返す"""
+    # JPX銘柄名がまだ読み込まれていなければ先にロード
+    if not _jpx_names:
+        try:
+            fetch_jpx_tickers()
+        except Exception:
+            pass
+
     all_stocks = []
     seen = set()
 
@@ -605,9 +592,10 @@ def fetch_pts_stocks() -> list[dict]:
         for s in stocks:
             if abs(s["change_pct"]) >= PTS_THRESHOLD and s["code"] not in seen:
                 seen.add(s["code"])
-                # 銘柄名をスクリーニングと同じ方法で取得
+                # JPXキャッシュから日本語銘柄名を取得
                 ticker = f"{s['code']}.T"
-                s["name"] = get_ticker_name(ticker)
+                jpx_name = _jpx_names.get(ticker, "")
+                s["name"] = jpx_name if jpx_name and jpx_name != "-" else "-"
                 all_stocks.append(s)
 
     all_stocks.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
