@@ -261,6 +261,82 @@ header .badge-auto {
   opacity: 0.3;
 }
 
+/* ── 注目銘柄 ─────────────────────────────────── */
+.card-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.btn-clear {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn-clear:hover { color: var(--red); border-color: var(--red); }
+
+.watchlist-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.watchlist-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px 5px 10px;
+  font-size: 13px;
+}
+
+.watchlist-name {
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchlist-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.watchlist-remove:hover { color: var(--red); }
+
+/* ── ★ボタン ──────────────────────────────────── */
+.star-cell {
+  width: 32px;
+  text-align: center;
+  padding: 10px 4px !important;
+}
+
+.star-btn {
+  background: none;
+  border: none;
+  color: var(--border);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.star-btn:hover { color: #e2b340; }
+.star-btn.active { color: #e2b340; }
+
 /* ── 結果テーブル ──────────────────────────────── */
 .result-table {
   width: 100%;

@@ -17,6 +17,15 @@
     <span class="badge badge-auto">JPX自動取得</span>
   </header>
 
+  <!-- 注目銘柄 -->
+  <div class="card" id="watchlist-card" style="display:none;">
+    <div class="card-title-row">
+      <div class="card-title" style="margin-bottom:0;">注目銘柄 <span class="hit-count" id="watchlist-count"></span></div>
+      <button class="btn-clear" onclick="clearWatchlist()">すべて解除</button>
+    </div>
+    <div id="watchlist-body" class="watchlist-body"></div>
+  </div>
+
   <!-- 実行パネル -->
   <div class="card">
     <div class="card-title">累積下落スクリーニング（1〜5日一括）</div>
@@ -68,7 +77,7 @@
     </div>
     <div class="resume-info" id="resume-info" style="display:none;"></div>
 
-    <!-- 進捗バ��� -->
+    <!-- 進捗バー -->
     <div id="progress-area" style="display:none;">
       <div class="progress-bar-track">
         <div class="progress-bar-fill" id="progress-fill"></div>
@@ -97,6 +106,7 @@
     <div id="result-body">
       <table class="result-table" id="result-table">
         <thead><tr>
+          <th style="width:32px"></th>
           <th>銘柄</th><th>銘柄名</th>
           <th id="ref-close-th" style="text-align:right">1日前終値</th>
           <th style="text-align:right">現在値</th>
@@ -146,6 +156,90 @@ let activeTab = 1;
 let enabledDays = [1, 2, 3, 4, 5];
 let tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
 
+/* ── 注目銘柄 (watchlist) ────────────────────────── */
+const WATCHLIST_KEY = "stock_screener_watchlist";
+let watchlist = new Map();
+
+function loadWatchlist() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(WATCHLIST_KEY));
+    if (Array.isArray(saved)) {
+      for (const item of saved) watchlist.set(item.ticker, item.name);
+    }
+  } catch {}
+  renderWatchlist();
+}
+
+function saveWatchlist() {
+  const arr = [];
+  for (const [ticker, name] of watchlist) arr.push({ticker, name});
+  localStorage.setItem(WATCHLIST_KEY, JSON.stringify(arr));
+}
+
+function toggleWatchlist(ticker, name) {
+  if (watchlist.has(ticker)) {
+    watchlist.delete(ticker);
+  } else {
+    watchlist.set(ticker, name);
+  }
+  saveWatchlist();
+  renderWatchlist();
+  updateStarButtons();
+}
+
+function clearWatchlist() {
+  watchlist.clear();
+  saveWatchlist();
+  renderWatchlist();
+  updateStarButtons();
+}
+
+function renderWatchlist() {
+  const card = document.getElementById("watchlist-card");
+  const body = document.getElementById("watchlist-body");
+  const count = document.getElementById("watchlist-count");
+
+  if (watchlist.size === 0) {
+    card.style.display = "none";
+    return;
+  }
+
+  card.style.display = "block";
+  count.textContent = `${watchlist.size} 銘柄`;
+  body.innerHTML = "";
+
+  for (const [ticker, name] of watchlist) {
+    const code = displayCode(ticker);
+    const item = document.createElement("span");
+    item.className = "watchlist-item";
+
+    const link = document.createElement("a");
+    link.className = "ticker-link";
+    link.textContent = code;
+    link.onclick = () => showChart(ticker);
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "watchlist-name";
+    nameSpan.textContent = name;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "watchlist-remove";
+    removeBtn.innerHTML = "&times;";
+    removeBtn.onclick = () => toggleWatchlist(ticker, name);
+
+    item.appendChild(link);
+    item.appendChild(nameSpan);
+    item.appendChild(removeBtn);
+    body.appendChild(item);
+  }
+}
+
+function updateStarButtons() {
+  document.querySelectorAll(".star-btn").forEach(btn => {
+    btn.classList.toggle("active", watchlist.has(btn.dataset.ticker));
+  });
+}
+
 /* ── 設定 localStorage ────────────────────────────── */
 const SETTINGS_KEY = "stock_screener_settings";
 
@@ -178,6 +272,7 @@ function saveSettings() {
 }
 
 loadSettings();
+loadWatchlist();
 
 /* ── チェックボックスの有効/無効ビジュアル ─────────── */
 function applyRowDisabled() {
@@ -280,7 +375,7 @@ function stopPolling() {
 
 function displayCode(ticker) { return ticker.replace(/\.T$/, ""); }
 
-/* ── スクリーニング実行 ───���──────────────────────── */
+/* ── スクリーニング実行 ──────────────────────────── */
 async function runScreen(isAutoRetry, fresh) {
   stopPolling();
 
@@ -384,7 +479,7 @@ async function pollProgress(jobId) {
       for (const day of enabledDays) {
         if (tabHits[day] === 0) {
           document.getElementById(`result-tbody-${day}`).innerHTML =
-            '<tr><td colspan="6" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
+            '<tr><td colspan="7" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
         }
       }
     } else if (d.status === "lost") {
@@ -424,9 +519,22 @@ function appendRow(r) {
 
   tabHits[days]++;
 
+  const isStarred = watchlist.has(r.ticker);
   const chgSign = r.cum_change >= 0 ? "+" : "";
   const tr = document.createElement("tr");
-  tr.innerHTML = `
+
+  const starTd = document.createElement("td");
+  starTd.className = "star-cell";
+  const starBtn = document.createElement("button");
+  starBtn.className = "star-btn" + (isStarred ? " active" : "");
+  starBtn.dataset.ticker = r.ticker;
+  starBtn.textContent = "\u2605";
+  starBtn.onclick = () => toggleWatchlist(r.ticker, r.name);
+  starTd.appendChild(starBtn);
+  tr.appendChild(starTd);
+
+  const rest = document.createElement("template");
+  rest.innerHTML = `
     <td><a class="ticker-link" onclick="showChart('${r.ticker}')">${displayCode(r.ticker)}</a></td>
     <td>${r.name}</td>
     <td class="price">${r.ref_close.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
@@ -434,6 +542,7 @@ function appendRow(r) {
     <td class="change down">${chgSign}${r.cum_change.toFixed(1)}%</td>
     <td class="price">${r.max_wick.toFixed(1)}%</td>
   `;
+  tr.append(...rest.content.children);
   tbody.appendChild(tr);
 }
 
