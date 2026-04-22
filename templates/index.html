@@ -216,7 +216,7 @@ function renderWatchlist() {
     const link = document.createElement("a");
     link.className = "ticker-link";
     link.textContent = code;
-    link.onclick = () => showChart(ticker);
+    link.onclick = () => showChart(ticker, name);
 
     const nameSpan = document.createElement("span");
     nameSpan.className = "watchlist-name";
@@ -535,7 +535,7 @@ function appendRow(r) {
 
   const rest = document.createElement("template");
   rest.innerHTML = `
-    <td><a class="ticker-link" onclick="showChart('${r.ticker}')">${displayCode(r.ticker)}</a></td>
+    <td><a class="ticker-link" onclick="showChart('${r.ticker}', '${r.name.replace(/'/g, "\\'")}')">${displayCode(r.ticker)}</a></td>
     <td>${r.name}</td>
     <td class="price">${r.ref_close.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
     <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
@@ -547,10 +547,11 @@ function appendRow(r) {
 }
 
 /* ── チャート ─────────────────────────────────────── */
-async function showChart(ticker) {
+async function showChart(ticker, name) {
   chartArea.classList.add("visible");
   const code = displayCode(ticker);
-  chartTitle.textContent = `${code} チャート読込中...`;
+  const label = name ? `${code}  ${name}` : code;
+  chartTitle.textContent = `${label} チャート読込中...`;
   document.getElementById("plotly-chart").innerHTML =
     '<div style="text-align:center;padding:40px;color:#8b949e"><span class="spinner"></span></div>';
   chartArea.scrollIntoView({behavior: "smooth", block: "start"});
@@ -559,15 +560,15 @@ async function showChart(ticker) {
     const res  = await fetch(`/api/chart/${ticker}`);
     const data = await res.json();
     if (!data.ok) {
-      chartTitle.textContent = `${code} - エラー`;
+      chartTitle.textContent = `${label} - エラー`;
       document.getElementById("plotly-chart").innerHTML =
         `<div class="empty-state">${data.error}</div>`;
       return;
     }
-    chartTitle.textContent = `${code} 5分足チャート`;
+    chartTitle.textContent = `${label} 5分足チャート`;
     Plotly.newPlot("plotly-chart", data.chart.data, data.chart.layout, {responsive: true});
   } catch (e) {
-    chartTitle.textContent = `${code} - エラー`;
+    chartTitle.textContent = `${label} - エラー`;
     document.getElementById("plotly-chart").innerHTML =
       `<div class="empty-state">${e.message}</div>`;
   }

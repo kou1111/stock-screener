@@ -486,7 +486,6 @@ def build_chart_json(ticker: str) -> str | None:
     if len(df) < 2:
         return None
 
-    name = get_ticker_name(ticker)
     chart_date = df.index[-1].strftime("%Y/%m/%d")
 
     ma_len = min(25, len(df))
@@ -545,7 +544,7 @@ def build_chart_json(ticker: str) -> str | None:
         ))
 
     fig.update_layout(
-        title=dict(text=f"{ticker.replace('.T', '')}  {name}  ({chart_date})", font=dict(size=16)),
+        title=dict(text=f"{ticker.replace('.T', '')}  ({chart_date})", font=dict(size=16)),
         template="plotly_dark",
         height=560,
         margin=dict(l=50, r=30, t=60, b=30),
