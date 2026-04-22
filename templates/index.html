@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=5">
+  <link rel="stylesheet" href="/static/style.css?v=6">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -56,6 +56,12 @@
         <span class="setting-unit">%以上</span>
         <button class="btn btn-primary" id="intraday-btn" onclick="fetchIntraday()">当日変動銘柄を取得</button>
       </div>
+    </div>
+    <div id="intraday-progress" style="display:none; margin-top:8px;">
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="intraday-progress-fill"></div>
+      </div>
+      <div class="progress-text" id="intraday-progress-text"></div>
     </div>
     <div id="intraday-status" class="status-bar" style="margin-top:8px;"></div>
     <div id="intraday-result" style="display:none; margin-top:12px;">
@@ -750,6 +756,9 @@ function appendPtsRow(s) {
 /* ── 当日大幅変動銘柄取得 ─────────────────────────── */
 const INTRADAY_THRESHOLD_KEY = "stock_screener_intraday_threshold";
 const intradayThresholdInput = document.getElementById("intraday-threshold");
+let intradayPollTimer = null;
+let intradayJobId = null;
+let intradayCursor = 0;
 
 {
   const saved = localStorage.getItem(INTRADAY_THRESHOLD_KEY);
@@ -759,41 +768,121 @@ intradayThresholdInput.addEventListener("change", () => {
   localStorage.setItem(INTRADAY_THRESHOLD_KEY, intradayThresholdInput.value);
 });
 
+function stopIntradayPolling() {
+  if (intradayPollTimer) { clearInterval(intradayPollTimer); intradayPollTimer = null; }
+  intradayJobId = null;
+  intradayCursor = 0;
+}
+
 async function fetchIntraday() {
+  stopIntradayPolling();
+
   const btn = document.getElementById("intraday-btn");
   const status = document.getElementById("intraday-status");
+  const progArea = document.getElementById("intraday-progress");
+  const progFill = document.getElementById("intraday-progress-fill");
+  const progText = document.getElementById("intraday-progress-text");
   const result = document.getElementById("intraday-result");
   const tbody = document.getElementById("intraday-tbody");
   const threshold = parseFloat(intradayThresholdInput.value) || 3;
   localStorage.setItem(INTRADAY_THRESHOLD_KEY, intradayThresholdInput.value);
 
   btn.disabled = true;
-  btn.textContent = "取得中...";
-  status.innerHTML = '<span class="spinner"></span> JPX銘柄をスキャン中（数分かかる場合があります）...';
+  btn.textContent = "スキャン中...";
+  status.innerHTML = '<span class="spinner"></span> JPX銘柄一覧を取得中...';
+  progArea.style.display = "block";
+  progFill.style.width = "0%";
+  progText.textContent = "準備中...";
   result.style.display = "none";
   tbody.innerHTML = "";
 
   try {
-    const res = await fetch(`/api/intraday?threshold=${threshold}`);
+    const res = await fetch("/api/intraday/start", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({threshold}),
+    });
     const data = await res.json();
     if (!data.ok) {
-      status.innerHTML = `<span class="dot err"></span> ${data.error}`;
+      status.innerHTML = `<span class="dot err"></span> ${data.error || "開始に失敗"}`;
+      btn.disabled = false;
+      btn.textContent = "当日変動銘柄を取得";
+      progArea.style.display = "none";
       return;
     }
-    if (data.stocks.length === 0) {
-      status.innerHTML = `<span class="dot"></span> ±${threshold}%以上の変動銘柄はありません`;
-      return;
-    }
-    status.innerHTML = `<span class="dot ok"></span> ${data.stocks.length}件の大幅変動銘柄`;
-    result.style.display = "block";
-    for (const s of data.stocks) {
-      appendIntradayRow(s);
-    }
+    intradayJobId = data.job_id;
+    intradayCursor = 0;
+    intradayPollTimer = setInterval(() => pollIntraday(intradayJobId), 1000);
   } catch (e) {
     status.innerHTML = `<span class="dot err"></span> エラー: ${e.message}`;
-  } finally {
     btn.disabled = false;
     btn.textContent = "当日変動銘柄を取得";
+    progArea.style.display = "none";
+  }
+}
+
+async function pollIntraday(jobId) {
+  if (jobId !== intradayJobId) return;
+  const btn = document.getElementById("intraday-btn");
+  const status = document.getElementById("intraday-status");
+  const progFill = document.getElementById("intraday-progress-fill");
+  const progText = document.getElementById("intraday-progress-text");
+  const result = document.getElementById("intraday-result");
+  const threshold = parseFloat(intradayThresholdInput.value) || 3;
+
+  try {
+    const res = await fetch(`/api/intraday/poll/${jobId}?cursor=${intradayCursor}`);
+    const d = await res.json();
+    if (!d.ok) {
+      stopIntradayPolling();
+      status.innerHTML = `<span class="dot err"></span> ${d.error}`;
+      btn.disabled = false;
+      btn.textContent = "当日変動銘柄を取得";
+      return;
+    }
+
+    if (d.total > 0) {
+      const pct = d.processed / d.total * 100;
+      progFill.style.width = pct + "%";
+      progText.textContent = `スキャン中... ${d.processed.toLocaleString()} / ${d.total.toLocaleString()} 銘柄　(${d.hits} 件検知)`;
+      status.innerHTML = `<span class="spinner"></span> ${d.processed.toLocaleString()} / ${d.total.toLocaleString()} 銘柄処理中...`;
+    }
+
+    if (d.new_results.length > 0) {
+      result.style.display = "block";
+      for (const s of d.new_results) appendIntradayRow(s);
+      intradayCursor = d.cursor;
+    }
+
+    if (d.status === "done") {
+      stopIntradayPolling();
+      progFill.style.width = "100%";
+      progText.textContent = `完了 — ${d.total.toLocaleString()} 銘柄処理 / ${d.hits} 件検知`;
+      btn.disabled = false;
+      btn.textContent = "当日変動銘柄を取得";
+      if (d.hits === 0) {
+        status.innerHTML = `<span class="dot"></span> ±${threshold}%以上の変動銘柄はありません`;
+      } else {
+        status.innerHTML = `<span class="dot ok"></span> ${d.hits}件の大幅変動銘柄`;
+        // done時に全結果をソート済みで再描画
+        const tbody = document.getElementById("intraday-tbody");
+        tbody.innerHTML = "";
+        const allRes = await fetch(`/api/intraday/poll/${jobId}?cursor=0`);
+        const allData = await allRes.json();
+        if (allData.ok) {
+          result.style.display = "block";
+          for (const s of allData.new_results) appendIntradayRow(s);
+        }
+      }
+    } else if (d.status === "error") {
+      stopIntradayPolling();
+      status.innerHTML = `<span class="dot err"></span> ${d.message}`;
+      btn.disabled = false;
+      btn.textContent = "当日変動銘柄を取得";
+      document.getElementById("intraday-progress").style.display = "none";
+    }
+  } catch (e) {
+    // ネットワークエラーは無視して次回リトライ
   }
 }
 

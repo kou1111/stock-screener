@@ -673,28 +673,41 @@ def _check_intraday(ticker: str, threshold: float) -> dict | None:
         return None
 
 
-def fetch_intraday_movers(threshold: float = 3.0) -> list[dict]:
-    """JPXプライム市場銘柄（時価総額70億円以上）で当日大幅変動銘柄を抽出"""
-    if not _jpx_names:
-        try:
-            fetch_jpx_tickers()
-        except Exception:
-            pass
+def _run_intraday(job_id: str, threshold: float):
+    """バックグラウンドで当日大幅変動銘柄をスキャン"""
+    try:
+        tickers = fetch_jpx_tickers()
+    except Exception as e:
+        _update_job(job_id, status="error", message=f"JPX一覧の取得に失敗: {e}")
+        return
 
-    tickers = fetch_jpx_tickers()
-    logging.info("当日変動スキャン開始: %d 銘柄 (閾値=±%.1f%%)", len(tickers), threshold)
+    total = len(tickers)
+    logging.info("当日変動スキャン開始: %d 銘柄 (閾値=±%.1f%%)", total, threshold)
+    _update_job(job_id, status="running", total=total, processed=0,
+                message="当日変動スキャン中...")
 
-    results = []
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = {executor.submit(_check_intraday, t, threshold): t for t in tickers}
+        count = 0
         for future in as_completed(futures):
             result = future.result()
+            _increment_processed(job_id)
             if result:
-                results.append(result)
+                _append_result(job_id, result)
+            count += 1
+            if count % 20 == 0:
+                _flush_job(job_id)
 
-    results.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
-    logging.info("当日変動スキャン完了: %d 件検知", len(results))
-    return results
+    # 結果を変動率の絶対値降順でソート
+    with _jobs_lock:
+        if job_id in _jobs_mem:
+            _jobs_mem[job_id]["results"].sort(
+                key=lambda x: abs(x["change_pct"]), reverse=True)
+
+    job = _get_job(job_id)
+    hits = job["hits"] if job else 0
+    logging.info("当日変動スキャン完了: %d 銘柄処理 / %d 件検知", total, hits)
+    _update_job(job_id, status="done", message="完了")
 
 
 # ── 変動理由調査 ─────────────────────────────────────
@@ -847,16 +860,41 @@ def api_pts():
         return jsonify({"ok": False, "error": str(e)})
 
 
-@app.route("/api/intraday")
-def api_intraday():
-    """当日大幅変動銘柄を取得"""
-    try:
-        threshold = float(request.args.get("threshold", 3.0))
-        stocks = fetch_intraday_movers(threshold)
-        return jsonify({"ok": True, "stocks": stocks})
-    except Exception as e:
-        logging.exception("当日変動取得エラー")
-        return jsonify({"ok": False, "error": str(e)})
+@app.route("/api/intraday/start", methods=["POST"])
+def api_intraday_start():
+    """当日変動スキャンをバックグラウンドで開始"""
+    raw = request.get_json(silent=True) or {}
+    threshold = float(raw.get("threshold", 3.0))
+    job_id = _new_job()
+    t = threading.Thread(target=_run_intraday,
+                         args=(job_id, threshold), daemon=True)
+    t.start()
+    return jsonify({"ok": True, "job_id": job_id})
+
+
+@app.route("/api/intraday/poll/<job_id>")
+def api_intraday_poll(job_id):
+    """当日変動スキャンの進捗と結果を返す"""
+    job = _get_job(job_id)
+    if job is None:
+        return jsonify({"ok": False, "error": "ジョブが見つかりません"}), 404
+
+    cursor = int(request.args.get("cursor", 0))
+
+    with _jobs_lock:
+        new_results = job["results"][cursor:]
+        new_cursor = len(job["results"])
+
+    return jsonify({
+        "ok": True,
+        "status": job["status"],
+        "message": job.get("message", ""),
+        "total": job["total"],
+        "processed": job["processed"],
+        "hits": job["hits"],
+        "new_results": new_results,
+        "cursor": new_cursor,
+    })
 
 
 @app.route("/api/reason/<code>")
