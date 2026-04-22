@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=18">
+  <link rel="stylesheet" href="/static/style.css?v=19">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -313,6 +313,20 @@ function renderWatchlist() {
     item.appendChild(sparkWrap);
     if (info.spark && info.spark.length >= 2) {
       sparkCandle(info.spark, sparkWrap);
+    } else {
+      // データ未取得の場合はサーバーから取得
+      (async (tk, wrap, inf) => {
+        try {
+          const res = await fetch(`/api/spark/${encodeURIComponent(tk)}`);
+          const d = await res.json();
+          if (d.ok && d.spark && d.spark.length >= 2) {
+            inf.spark = d.spark;
+            if (d.market_cap) inf.market_cap = d.market_cap;
+            saveWatchlist();
+            sparkCandle(d.spark, wrap);
+          }
+        } catch {}
+      })(ticker, sparkWrap, info);
     }
 
     if (info.market_cap != null && info.market_cap > 0) {
@@ -483,7 +497,7 @@ function formatMarketCap(val) {
 /* sparkCandle: OHLC配列 [[o,h,l,c],...] → ミニローソク足 canvas */
 function sparkCandle(ohlc, el) {
   if (!ohlc || ohlc.length < 2 || !el) return;
-  const W = 150, H = 80, pad = 4;
+  const W = 180, H = 100, pad = 4;
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
   canvas.style.display = "block";

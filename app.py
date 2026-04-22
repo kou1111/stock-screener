@@ -966,6 +966,27 @@ def api_intraday_poll(job_id):
         return jsonify({"ok": False, "error": str(e)})
 
 
+@app.route("/api/spark/<ticker>")
+def api_spark(ticker):
+    """注目銘柄用: 1銘柄のスパークラインOHLCを返す"""
+    try:
+        if not ticker.endswith(".T"):
+            ticker = ticker + ".T"
+        tk = yf.Ticker(ticker)
+        hist = tk.history(period="1mo", interval="1d", auto_adjust=True)
+        if hist is None or hist.empty:
+            return jsonify({"ok": True, "spark": []})
+        spark = _spark_ohlc(hist)
+        try:
+            mcap = tk.fast_info.get("marketCap", 0) or 0
+        except Exception:
+            mcap = 0
+        return jsonify({"ok": True, "spark": spark, "market_cap": mcap})
+    except Exception as e:
+        logging.warning("Spark取得エラー (%s): %s", ticker, e)
+        return jsonify({"ok": True, "spark": [], "market_cap": 0})
+
+
 @app.route("/api/reason/start/<code>", methods=["POST"])
 def api_reason_start(code):
     """理由調査をバックグラウンドで開始（専用スレッドプール使用）"""
