@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=17">
+  <link rel="stylesheet" href="/static/style.css?v=18">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -307,6 +307,20 @@ function renderWatchlist() {
 
     item.appendChild(link);
     item.appendChild(nameSpan);
+
+    const sparkWrap = document.createElement("span");
+    sparkWrap.className = "watchlist-spark";
+    item.appendChild(sparkWrap);
+    if (info.spark && info.spark.length >= 2) {
+      sparkCandle(info.spark, sparkWrap);
+      const last = info.spark[info.spark.length - 1];
+      const price = Array.isArray(last) ? last[3] : last;
+      const priceSpan = document.createElement("span");
+      priceSpan.className = "watchlist-price";
+      priceSpan.textContent = price.toLocaleString("ja-JP");
+      item.appendChild(priceSpan);
+    }
+
     if (info.market_cap != null && info.market_cap > 0) {
       const mcapSpan = document.createElement("span");
       mcapSpan.className = "watchlist-turnover";

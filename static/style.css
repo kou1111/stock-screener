@@ -306,6 +306,21 @@ header .badge-auto {
   white-space: nowrap;
 }
 
+.watchlist-spark {
+  line-height: 0;
+  flex-shrink: 0;
+}
+.watchlist-spark canvas {
+  display: block;
+  border-radius: 3px;
+}
+.watchlist-price {
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
 .watchlist-turnover {
   color: var(--muted);
   font-size: 11px;
