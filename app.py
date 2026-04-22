@@ -755,28 +755,26 @@ def investigate_reason(code: str, name: str) -> str:
         f"今後のイベントや注目ポイントを記載"
     )
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt}],
-        tools=[{
-            "type": "web_search_20250305",
-            "name": "web_search",
-            "max_uses": 5,
-            "user_location": {
-                "type": "approximate",
-                "country": "JP",
-                "timezone": "Asia/Tokyo",
-            },
-        }],
-    )
+    logging.info("理由調査開始: %s (%s)", code, name)
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            tools=[{"type": "web_search_20250305", "name": "web_search"}],
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except Exception as e:
+        logging.error("Anthropic API呼び出しエラー: %s — %s", type(e).__name__, e)
+        raise
 
     texts = []
     for block in response.content:
         if getattr(block, "type", None) == "text" and hasattr(block, "text"):
             texts.append(block.text)
 
-    return "\n".join(texts) if texts else "理由を特定できませんでした。"
+    result = "\n".join(texts) if texts else "理由を特定できませんでした。"
+    logging.info("理由調査完了: %s (%d文字)", code, len(result))
+    return result
 
 
 # ── ルーティング ───────────────────────────────────
