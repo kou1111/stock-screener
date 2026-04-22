@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=22">
+  <link rel="stylesheet" href="/static/style.css?v=23">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -518,26 +518,35 @@ function sparkCandle(ohlc, el) {
 
   function yOf(v) { return pad + (1 - (v - lo) / range) * (H - pad * 2); }
 
-  // Y軸グリッド線 & ラベル (高値・中間・安値)
-  const mid = lo + range / 2;
-  const ticks = [hi, mid, lo];
+  // Y軸刻み幅を株価水準に応じて決定
+  const midPrice = (hi + lo) / 2;
+  const step = midPrice >= 10000 ? 2000
+             : midPrice >= 5000  ? 1000
+             : midPrice >= 1000  ? 500
+             : midPrice >= 500   ? 100
+             : midPrice >= 100   ? 50
+             : midPrice >= 50    ? 10
+             : midPrice >= 10    ? 5 : 1;
+  // キリのいい数字でグリッド線を生成
+  const firstTick = Math.ceil(lo / step) * step;
+  const ticks = [];
+  for (let v = firstTick; v <= hi; v += step) ticks.push(v);
+
   ctx.font = "9px -apple-system, sans-serif";
   ctx.textAlign = "right";
   for (const v of ticks) {
     const y = yOf(v);
-    // グリッド横線
+    if (y < pad + 2 || y > H - pad - 2) continue;
     ctx.strokeStyle = "rgba(255,255,255,0.15)";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(lm, y);
     ctx.lineTo(W - pad, y);
     ctx.stroke();
-    // 価格ラベル
     ctx.fillStyle = "rgba(255,255,255,0.6)";
     ctx.textBaseline = "middle";
-    const label = v >= 10000 ? Math.round(v).toLocaleString("ja-JP")
-                : v >= 1000 ? Math.round(v).toLocaleString("ja-JP")
-                : v.toFixed(1);
+    const label = v >= 1000 ? Math.round(v).toLocaleString("ja-JP")
+                : Number.isInteger(v) ? String(v) : v.toFixed(1);
     ctx.fillText(label, lm - 3, y);
   }
 
