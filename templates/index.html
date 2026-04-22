@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=23">
+  <link rel="stylesheet" href="/static/style.css?v=24">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -520,13 +520,14 @@ function sparkCandle(ohlc, el) {
 
   // Y軸刻み幅を株価水準に応じて決定
   const midPrice = (hi + lo) / 2;
-  const step = midPrice >= 10000 ? 2000
-             : midPrice >= 5000  ? 1000
-             : midPrice >= 1000  ? 500
-             : midPrice >= 500   ? 100
-             : midPrice >= 100   ? 50
-             : midPrice >= 50    ? 10
-             : midPrice >= 10    ? 5 : 1;
+  const step = midPrice >= 30000 ? 1000
+             : midPrice >= 10000 ? 500
+             : midPrice >= 5000  ? 200
+             : midPrice >= 2000  ? 100
+             : midPrice >= 500   ? 50
+             : midPrice >= 200   ? 10
+             : midPrice >= 50    ? 5
+             : midPrice >= 10    ? 1 : 0.5;
   // キリのいい数字でグリッド線を生成
   const firstTick = Math.ceil(lo / step) * step;
   const ticks = [];
