@@ -686,6 +686,9 @@ def _run_intraday(job_id: str, threshold: float):
     _update_job(job_id, status="running", total=total, processed=0,
                 message="当日変動スキャン中...")
 
+    seen_lock = threading.Lock()
+    seen_symbols = set()
+
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = {executor.submit(_check_intraday, t, threshold): t for t in tickers}
         count = 0
@@ -693,7 +696,10 @@ def _run_intraday(job_id: str, threshold: float):
             result = future.result()
             _increment_processed(job_id)
             if result:
-                _append_result(job_id, result)
+                with seen_lock:
+                    if result["code"] not in seen_symbols:
+                        seen_symbols.add(result["code"])
+                        _append_result(job_id, result)
             count += 1
             if count % 20 == 0:
                 _flush_job(job_id)
