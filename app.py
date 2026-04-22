@@ -181,6 +181,13 @@ def fetch_jpx_tickers() -> list[str]:
         total_rows, after_etf, after_prime,
     )
 
+    # 全銘柄の日本語名をキャッシュ（PTS等で他市場の銘柄名も必要なため）
+    for _, row in df.iterrows():
+        code = str(row["code"]).strip()
+        if code:
+            _jpx_names[f"{code}.T"] = str(row["name"]).strip()
+
+    # スクリーニング対象はプライム市場のみ
     tickers = []
     seen = set()
     for _, row in stocks.iterrows():
@@ -192,7 +199,6 @@ def fetch_jpx_tickers() -> list[str]:
             continue
         seen.add(ticker)
         tickers.append(ticker)
-        _jpx_names[ticker] = str(row["name"]).strip()
 
     return tickers
 
