@@ -33,6 +33,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 # ── 設定 ───────────────────────────────────────────
 JPX_URL = "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls"
 MIN_MARKET_CAP = 7_000_000_000  # 70億円
+MIN_VOLUME = 3_000  # 出来高フィルタ
 MAX_WORKERS = 50
 LOOKBACK_DAYS = 60
 
@@ -276,6 +277,11 @@ def screen_worker(ticker: str, settings: dict) -> list[dict]:
         df = df.dropna(subset=["Close"])
         # 最低7行必要: iloc[-1](今日) 〜 iloc[-6](5営業日前) + 余裕
         if len(df) < 7:
+            return []
+
+        # 当日出来高が3000株以下なら除外
+        today_volume = float(df["Volume"].iloc[-1]) if "Volume" in df.columns else 0
+        if today_volume <= MIN_VOLUME:
             return []
 
         days_config = settings["days_config"]
@@ -598,8 +604,16 @@ def fetch_pts_stocks() -> list[dict]:
         for s in stocks:
             if abs(s["change_pct"]) >= PTS_THRESHOLD and s["code"] not in seen:
                 seen.add(s["code"])
-                # JPXキャッシュから日本語銘柄名を取得
+                # 当日出来高が3000株以下なら除外
                 ticker = f"{s['code']}.T"
+                try:
+                    hist = yf.Ticker(ticker).history(period="1d")
+                    vol = float(hist["Volume"].iloc[-1]) if not hist.empty else 0
+                except Exception:
+                    vol = 0
+                if vol <= MIN_VOLUME:
+                    continue
+                # JPXキャッシュから日本語銘柄名を取得
                 jpx_name = _jpx_names.get(ticker, "")
                 s["name"] = jpx_name if jpx_name and jpx_name != "-" else "-"
                 all_stocks.append(s)
