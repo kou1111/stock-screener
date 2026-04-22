@@ -712,7 +712,7 @@ def _run_intraday(job_id: str, threshold: float):
 
 # ── 変動理由調査 ─────────────────────────────────────
 def investigate_reason(code: str, name: str) -> str:
-    """Anthropic API (Extended Thinking) + web_search で銘柄の変動理由を調査"""
+    """Anthropic API で銘柄の変動理由を調査"""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY が設定されていません")
@@ -731,15 +731,10 @@ def investigate_reason(code: str, name: str) -> str:
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=16000,
-        thinking={
-            "type": "enabled",
-            "budget_tokens": 10000,
-        },
+        max_tokens=4096,
         messages=[{"role": "user", "content": prompt}],
     )
 
-    # テキストブロックのみ結合（thinkingブロックは除外）
     texts = []
     for block in response.content:
         if getattr(block, "type", None) == "text" and hasattr(block, "text"):
