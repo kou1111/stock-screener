@@ -712,7 +712,7 @@ def _run_intraday(job_id: str, threshold: float):
 
 # ── 変動理由調査 ─────────────────────────────────────
 def investigate_reason(code: str, name: str) -> str:
-    """Anthropic API で銘柄の変動理由を調査"""
+    """Anthropic API + web_search で銘柄の変動理由を調査"""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY が設定されていません")
@@ -720,19 +720,49 @@ def investigate_reason(code: str, name: str) -> str:
     import anthropic
     client = anthropic.Anthropic(api_key=api_key)
 
+    today = datetime.now().strftime("%Y年%m月%d日")
+
     prompt = (
-        f"日本株 {code} ({name}) が大幅に変動しています。\n"
-        f"以下を調べて、変動の理由を日本語で簡潔に説明してください：\n"
-        f"1. Yahoo ファイナンス ({code})のニュース\n"
-        f"2. TDNet（適時開示情報）の最新開示\n"
-        f"3. その他関連ニュース\n\n"
-        f"3〜5文で要約してください。"
+        f"あなたは日本株アナリストです。\n"
+        f"銘柄コード: {code}\n"
+        f"銘柄名: {name}\n"
+        f"本日の日付: {today}\n\n"
+        f"以下のキーワードでWeb検索を行い、この銘柄の株価変動理由を調査してください：\n"
+        f"・「{name} 株価 理由 {today}」\n"
+        f"・「{code} 決算 IR」\n"
+        f"・「{name} ニュース」\n\n"
+        f"調査対象：\n"
+        f"1. 今日・昨日のニュース\n"
+        f"2. 適時開示（決算・IR情報）\n"
+        f"3. アナリストレポート\n"
+        f"4. 市場全体の動き（日経平均・セクター動向）\n\n"
+        f"以下の形式で日本語で回答してください：\n\n"
+        f"【本日の株価動向】\n"
+        f"始値・高値・安値・現在値・変動率を記載\n\n"
+        f"【変動の主な理由】\n"
+        f"・理由1\n"
+        f"・理由2\n"
+        f"・理由3\n\n"
+        f"【背景にある構造的な要因】\n"
+        f"業界動向や中長期的な要因を記載\n\n"
+        f"【今後の注目材料】\n"
+        f"今後のイベントや注目ポイントを記載"
     )
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=4096,
         messages=[{"role": "user", "content": prompt}],
+        tools=[{
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 5,
+            "user_location": {
+                "type": "approximate",
+                "country": "JP",
+                "timezone": "Asia/Tokyo",
+            },
+        }],
     )
 
     texts = []
