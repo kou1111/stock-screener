@@ -801,19 +801,19 @@ def _run_intraday(job_id: str, threshold: float):
 
 # ── 変動理由調査 ─────────────────────────────────────
 def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
-    """o4-mini + web_search_preview で銘柄の変動理由を調査（バックグラウンドスレッドで実行）"""
+    """gpt-4o-search-preview で銘柄の変動理由を調査"""
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY が設定されていません")
 
-    import openai
-    client = openai.OpenAI(api_key=api_key)
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
 
     today = datetime.now().strftime("%Y年%m月%d日")
 
     if job_id:
         _update_job(job_id, step="searching")
-    logging.info("理由調査開始 (o4-mini+web_search): %s (%s)", code, name)
+    logging.info("理由調査開始 (gpt-4o-search-preview): %s (%s)", code, name)
 
     prompt = (
         f"{name}（証券コード:{code}）の株価が{today}に大きく動いた理由を徹底的に調査してください。\n\n"
@@ -836,17 +836,16 @@ def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
     )
 
     try:
-        resp = client.responses.create(
-            model="o4-mini",
-            reasoning={"effort": "high"},
-            tools=[{"type": "web_search_preview"}],
-            input=prompt,
+        response = client.chat.completions.create(
+            model="gpt-4o-search-preview",
+            messages=[{"role": "user", "content": prompt}],
+            timeout=55,
         )
     except Exception as e:
         logging.error("理由調査 API呼び出しエラー: %s — %s", type(e).__name__, e)
         raise
 
-    result = resp.output_text if resp.output_text else "理由を特定できませんでした。"
+    result = response.choices[0].message.content if response.choices else "理由を特定できませんでした。"
     logging.info("理由調査完了: %s (%d文字)", code, len(result))
     return result
 
