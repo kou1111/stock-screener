@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=29">
+  <link rel="stylesheet" href="/static/style.css?v=30">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -224,7 +224,7 @@
   </div>
   <div class="rp-body" id="rp-body"></div>
 </div>
-<div id="reason-overlay" class="reason-overlay" onclick="closeReasonPanel()"></div>
+<button id="rp-tab" class="rp-tab" onclick="toggleReasonPanel()">&#x25B6;</button>
 
 <script>
 const screenBtn    = document.getElementById("screen-btn");
@@ -1209,31 +1209,42 @@ function formatReasonHtml(text) {
 }
 
 /* ── 理由調査サイドパネル ─────────────────────────── */
-let _reasonBtn = null;
+let _reasonJobId = null;   // 現在調査中のジョブID (キャンセル検知用)
+let _rpHasContent = false; // パネルに結果があるか
+
+function _rpIsOpen() { return document.getElementById("reason-panel").classList.contains("open"); }
+
+function _rpUpdateTab(isOpen) {
+  const tab = document.getElementById("rp-tab");
+  tab.classList.toggle("open", isOpen);
+  tab.innerHTML = isOpen ? "&#x25C0;" : "&#x25B6;";
+  if (_rpHasContent) tab.classList.add("visible");
+}
 
 function openReasonPanel(code, name) {
   document.getElementById("rp-title").textContent = `${code}  ${name}`;
   document.getElementById("reason-panel").classList.add("open");
-  document.getElementById("reason-overlay").classList.add("open");
+  _rpUpdateTab(true);
 }
 
 function closeReasonPanel() {
   document.getElementById("reason-panel").classList.remove("open");
-  document.getElementById("reason-overlay").classList.remove("open");
-  if (_reasonBtn) { _reasonBtn.disabled = false; _reasonBtn.textContent = "理由を調べる"; _reasonBtn = null; }
+  _rpUpdateTab(false);
+}
+
+function toggleReasonPanel() {
+  if (_rpIsOpen()) { closeReasonPanel(); }
+  else if (_rpHasContent) { document.getElementById("reason-panel").classList.add("open"); _rpUpdateTab(true); }
 }
 
 async function investigateReason(btn, code, name) {
-  if (_reasonBtn === btn) { closeReasonPanel(); return; }
-  if (_reasonBtn) { _reasonBtn.disabled = false; _reasonBtn.textContent = "理由を調べる"; }
-  _reasonBtn = btn;
-  btn.disabled = true;
-  btn.textContent = "調査中...";
-
   const body = document.getElementById("rp-body");
   body.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span><p style="margin-top:12px;color:var(--muted)">AIがWeb検索で調査中...</p></div>';
+  _rpHasContent = true;
   openReasonPanel(code, name);
 
+  // 新しいジョブIDを発行して古い調査のポーリングを無効化
+  let myJobId;
   try {
     const startRes = await fetch(`/api/reason/start/${code}`, {
       method: "POST",
@@ -1243,14 +1254,23 @@ async function investigateReason(btn, code, name) {
     if (!startRes.ok) throw new Error(`サーバーエラー (${startRes.status})`);
     const startData = await startRes.json();
     if (!startData.ok) throw new Error(startData.error || "開始に失敗");
+    myJobId = startData.job_id;
+    _reasonJobId = myJobId;
+  } catch (e) {
+    body.innerHTML = `<div class="rc-fallback" style="color:var(--red)">エラー: ${e.message}</div>`;
+    return;
+  }
 
-    const jobId = startData.job_id;
-    while (true) {
-      await new Promise(r => setTimeout(r, 2000));
-      const pollRes = await fetch(`/api/reason/poll/${jobId}`);
+  // ポーリング (途中で別の銘柄が開始されたら中断)
+  while (_reasonJobId === myJobId) {
+    await new Promise(r => setTimeout(r, 2000));
+    if (_reasonJobId !== myJobId) break;
+    try {
+      const pollRes = await fetch(`/api/reason/poll/${myJobId}`);
       if (!pollRes.ok) continue;
       const d = await pollRes.json();
       if (!d.ok) { throw new Error(d.error); }
+      if (_reasonJobId !== myJobId) break;
       if (d.status === "done") {
         body.innerHTML = formatReasonHtml(d.message);
         break;
@@ -1258,12 +1278,11 @@ async function investigateReason(btn, code, name) {
         body.innerHTML = `<div class="rc-fallback" style="color:var(--red)">${d.message}</div>`;
         break;
       }
+    } catch (e) {
+      if (_reasonJobId !== myJobId) break;
+      body.innerHTML = `<div class="rc-fallback" style="color:var(--red)">エラー: ${e.message}</div>`;
+      break;
     }
-  } catch (e) {
-    body.innerHTML = `<div class="rc-fallback" style="color:var(--red)">エラー: ${e.message}</div>`;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "理由を調べる";
   }
 }
 </script>

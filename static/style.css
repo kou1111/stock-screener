@@ -622,15 +622,6 @@ header .badge-auto {
 }
 
 /* ── 理由調査サイドパネル ──────────────────────────── */
-.reason-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.45);
-  z-index: 999;
-}
-.reason-overlay.open { display: block; }
-
 .reason-panel {
   position: fixed;
   top: 0;
@@ -644,8 +635,33 @@ header .badge-auto {
   flex-direction: column;
   transform: translateX(-100%);
   transition: transform 0.25s ease;
+  box-shadow: 4px 0 16px rgba(0,0,0,0.4);
 }
 .reason-panel.open { transform: translateX(0); }
+
+.rp-tab {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  z-index: 1001;
+  width: 24px;
+  height: 48px;
+  background: #1a1a2e;
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: left 0.25s ease;
+}
+.rp-tab.visible { display: flex; }
+.rp-tab.open    { left: 340px; }
+.rp-tab:hover { color: var(--text); }
 
 .rp-header {
   display: flex;
