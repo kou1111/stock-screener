@@ -355,16 +355,16 @@ header .badge-auto {
   font-size: 13px;
   display: flex;
   flex-direction: column;
-  transition: border-color 0.2s;
+  cursor: grab;
+  transition: transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1), border-color 0.2s;
 }
 .watchlist-item:hover { border-color: #3c3c3e; }
-.watchlist-item { cursor: grab; transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1); }
 .watchlist-item.wl-dragging {
   opacity: 0.9;
   cursor: grabbing;
-  transform: scale(1.05);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(88, 166, 255, 0.15);
   border-color: rgba(88, 166, 255, 0.3);
+  transition: none;
 }
 .wl-drag-placeholder {
   border: 2px dashed rgba(88, 166, 255, 0.3);
