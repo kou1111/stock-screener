@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=32">
+  <link rel="stylesheet" href="/static/style.css?v=33">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -288,11 +288,11 @@ function saveMemo(ticker, text) {
   localStorage.setItem(MEMO_KEY, JSON.stringify(watchlistMemos));
 }
 
-function toggleWatchlist(ticker, name, turnover, market_cap, spark) {
+function toggleWatchlist(ticker, name, turnover, market_cap, spark, market) {
   if (watchlist.has(ticker)) {
     watchlist.delete(ticker);
   } else {
-    watchlist.set(ticker, {name, turnover: turnover || null, market_cap: market_cap || null, spark: spark || null});
+    watchlist.set(ticker, {name, turnover: turnover || null, market_cap: market_cap || null, spark: spark || null, market: market || null});
     gaSend('watchlist_add', {ticker, name});
   }
   saveWatchlist();
@@ -339,6 +339,11 @@ function renderWatchlist() {
     /* ── 上段: コード・銘柄名・×ボタン ── */
     const hdr = document.createElement("div");
     hdr.className = "wl-header";
+    if (info.market) {
+      const badge = document.createElement("span");
+      badge.innerHTML = marketBadge(info.market);
+      hdr.appendChild(badge);
+    }
     const link = document.createElement("a");
     link.className = "ticker-link";
     link.textContent = code;
@@ -370,6 +375,7 @@ function renderWatchlist() {
           if (d.ok && d.spark && d.spark.length >= 2) {
             inf.spark = d.spark;
             if (d.market_cap) inf.market_cap = d.market_cap;
+            if (d.market) inf.market = d.market;
             saveWatchlist();
             sparkCandle(d.spark, wrap, true);
             const p = _sparkPrice(d.spark);
@@ -566,6 +572,14 @@ function formatMarketCap(val) {
   const oku = val / 100_000_000;
   if (oku >= 10000) return (oku / 10000).toFixed(1) + "兆";
   return Math.round(oku).toLocaleString("ja-JP") + "億";
+}
+
+function marketBadge(market) {
+  if (!market) return "";
+  if (market.includes("プライム"))   return '<span class="mkt-badge mkt-prime">プ</span>';
+  if (market.includes("スタンダード")) return '<span class="mkt-badge mkt-standard">ス</span>';
+  if (market.includes("グロース"))   return '<span class="mkt-badge mkt-growth">グ</span>';
+  return "";
 }
 
 /* sparkCandle: OHLC配列 [[o,h,l,c],...] → ミニローソク足 canvas
@@ -810,13 +824,13 @@ function appendRow(r) {
   starBtn.className = "star-btn" + (isStarred ? " active" : "");
   starBtn.dataset.ticker = r.ticker;
   starBtn.textContent = "\u2605";
-  starBtn.onclick = () => toggleWatchlist(r.ticker, r.name, r.turnover, r.market_cap, r.spark);
+  starBtn.onclick = () => toggleWatchlist(r.ticker, r.name, r.turnover, r.market_cap, r.spark, r.market);
   starTd.appendChild(starBtn);
   tr.appendChild(starTd);
 
   const rest = document.createElement("template");
   rest.innerHTML = `
-    <td><a class="ticker-link" onclick="showChart('${r.ticker}', '${r.name.replace(/'/g, "\\'")}')">${displayCode(r.ticker)}</a></td>
+    <td>${marketBadge(r.market)}<a class="ticker-link" onclick="showChart('${r.ticker}', '${r.name.replace(/'/g, "\\'")}')">${displayCode(r.ticker)}</a></td>
     <td class="name-cell" title="${r.name}">${r.name}</td>
     <td class="spark-cell"></td>
     <td class="price">${r.ref_close.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
@@ -970,13 +984,13 @@ function appendPtsRow(s) {
   starBtn.className = "star-btn" + (isStarred ? " active" : "");
   starBtn.dataset.ticker = ticker;
   starBtn.textContent = "\u2605";
-  starBtn.onclick = () => toggleWatchlist(ticker, s.name, s.turnover, s.market_cap, s.spark);
+  starBtn.onclick = () => toggleWatchlist(ticker, s.name, s.turnover, s.market_cap, s.spark, s.market);
   starTd.appendChild(starBtn);
   tr.appendChild(starTd);
 
   const tpl = document.createElement("template");
   tpl.innerHTML = `
-    <td><a class="ticker-link" onclick="showChart('${ticker}', '${s.name.replace(/'/g, "\\'")}')">${s.code}</a></td>
+    <td>${marketBadge(s.market)}<a class="ticker-link" onclick="showChart('${ticker}', '${s.name.replace(/'/g, "\\'")}')">${s.code}</a></td>
     <td class="name-cell" title="${s.name}">${s.name}</td>
     <td class="spark-cell"></td>
     <td class="price">${s.close ? s.close.toLocaleString("ja-JP") : "-"}</td>
@@ -1161,13 +1175,13 @@ function appendIntradayRow(s) {
   starBtn.className = "star-btn" + (isStarred ? " active" : "");
   starBtn.dataset.ticker = ticker;
   starBtn.textContent = "\u2605";
-  starBtn.onclick = () => toggleWatchlist(ticker, s.name, s.turnover, s.market_cap, s.spark);
+  starBtn.onclick = () => toggleWatchlist(ticker, s.name, s.turnover, s.market_cap, s.spark, s.market);
   starTd.appendChild(starBtn);
   tr.appendChild(starTd);
 
   const tpl = document.createElement("template");
   tpl.innerHTML = `
-    <td><a class="ticker-link" onclick="showChart('${ticker}', '${s.name.replace(/'/g, "\\'")}')">${s.code}</a></td>
+    <td>${marketBadge(s.market)}<a class="ticker-link" onclick="showChart('${ticker}', '${s.name.replace(/'/g, "\\'")}')">${s.code}</a></td>
     <td class="name-cell" title="${s.name}">${s.name}</td>
     <td class="spark-cell"></td>
     <td class="price">${s.open ? s.open.toLocaleString("ja-JP") : "-"}</td>

@@ -41,8 +41,9 @@ REASON_TIMEOUT = 60  # 理由調査のタイムアウト(秒)
 # 理由調査用スレッドプール（スキャンと分離）
 _reason_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="reason")
 
-# JPX 銘柄名キャッシュ
+# JPX 銘柄名・市場キャッシュ
 _jpx_names: dict[str, str] = {}
+_jpx_markets: dict[str, str] = {}  # ticker → "プライム" / "スタンダード" / "グロース"
 
 # ── ファイルベース ジョブ管理 ──────────────────────
 JOBS_DIR = Path(tempfile.gettempdir()) / "stock_screener_jobs"
@@ -164,7 +165,7 @@ def _delete_progress():
 # ── JPX 銘柄一覧取得 ──────────────────────────────
 def fetch_jpx_tickers() -> list[str]:
     """JPX Excelからプライム市場の銘柄のみ取得する"""
-    global _jpx_names
+    global _jpx_names, _jpx_markets
     r = http_requests.get(JPX_URL, timeout=30)
     r.raise_for_status()
 
@@ -188,11 +189,19 @@ def fetch_jpx_tickers() -> list[str]:
         total_rows, after_etf, after_prime,
     )
 
-    # 全銘柄の日本語名をキャッシュ（PTS等で他市場の銘柄名も必要なため）
+    # 全銘柄の日本語名・市場をキャッシュ（PTS等で他市場の銘柄名も必要なため）
     for _, row in df.iterrows():
         code = str(row["code"]).strip()
         if code:
-            _jpx_names[f"{code}.T"] = str(row["name"]).strip()
+            ticker = f"{code}.T"
+            _jpx_names[ticker] = str(row["name"]).strip()
+            mkt = str(row["market"]).strip()
+            if "プライム" in mkt:
+                _jpx_markets[ticker] = "プライム"
+            elif "スタンダード" in mkt:
+                _jpx_markets[ticker] = "スタンダード"
+            elif "グロース" in mkt:
+                _jpx_markets[ticker] = "グロース"
 
     # スクリーニング対象はプライム市場のみ
     tickers = []
@@ -346,6 +355,7 @@ def screen_worker(ticker: str, settings: dict) -> list[dict]:
                 "turnover": turnover,
                 "market_cap": mcap,
                 "spark": spark,
+                "market": _jpx_markets.get(ticker, ""),
             })
 
         return results
@@ -664,6 +674,7 @@ def fetch_pts_stocks(threshold: float = PTS_THRESHOLD) -> list[dict]:
                 s["turnover"] = round(vol * s["pts_price"] / 100_000_000, 1)
                 s["market_cap"] = mcap
                 s["spark"] = spark
+                s["market"] = _jpx_markets.get(ticker, "")
                 all_stocks.append(s)
 
     all_stocks.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
@@ -725,6 +736,7 @@ def _check_intraday(ticker: str, threshold: float) -> dict | None:
             "turnover": turnover,
             "market_cap": mcap,
             "spark": spark,
+            "market": _jpx_markets.get(ticker, ""),
         }
     except Exception:
         return None
@@ -1014,10 +1026,11 @@ def api_spark(ticker):
             mcap = tk.fast_info.get("marketCap", 0) or 0
         except Exception:
             mcap = 0
-        return jsonify({"ok": True, "spark": spark, "market_cap": mcap})
+        mkt = _jpx_markets.get(ticker, "")
+        return jsonify({"ok": True, "spark": spark, "market_cap": mcap, "market": mkt})
     except Exception as e:
         logging.warning("Spark取得エラー (%s): %s", ticker, e)
-        return jsonify({"ok": True, "spark": [], "market_cap": 0})
+        return jsonify({"ok": True, "spark": [], "market_cap": 0, "market": ""})
 
 
 @app.route("/api/reason/start/<code>", methods=["POST"])
