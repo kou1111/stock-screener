@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=33">
+  <link rel="stylesheet" href="/static/style.css?v=34">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -1337,6 +1337,7 @@ function _addToHistory(code, name, html) {
 function openReasonPanel(code, name) {
   document.getElementById("rp-title").textContent = `${code}  ${name}`;
   document.getElementById("reason-panel").classList.add("open");
+  document.querySelector(".container").classList.add("rp-pushed");
   _reasonActiveCode = code;
   _renderHistoryTabs();
   _rpUpdateToggle(true);
@@ -1344,6 +1345,7 @@ function openReasonPanel(code, name) {
 
 function closeReasonPanel() {
   document.getElementById("reason-panel").classList.remove("open");
+  document.querySelector(".container").classList.remove("rp-pushed");
   _rpUpdateToggle(false);
 }
 

@@ -26,7 +26,9 @@ body {
   max-width: 100%;
   margin: 0 auto;
   padding: 24px 20px;
+  transition: margin-left 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
+.container.rp-pushed { margin-left: 360px; }
 
 header {
   display: flex;
@@ -875,4 +877,5 @@ header .badge-auto {
   .result-table th, .result-table td { padding: 10px 8px; }
   .reason-panel { width: 300px; }
   .rp-tab.open { left: 300px; }
+  .container.rp-pushed { margin-left: 300px; }
 }
