@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=36">
+  <link rel="stylesheet" href="/static/style.css?v=37">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -312,13 +312,14 @@ function clearWatchlist() {
 }
 
 function _sparkPrice(spark) {
-  if (!spark || spark.length < 2) return {price: null, change: null};
+  if (!spark || spark.length < 2) return {price: null, change: null, diff: null};
   const last = spark[spark.length - 1];
   const prev = spark[spark.length - 2];
   const price = last[3];
   const prevClose = prev[3];
   const change = prevClose > 0 ? (price - prevClose) / prevClose * 100 : null;
-  return {price, change};
+  const diff = prevClose > 0 ? price - prevClose : null;
+  return {price, change, diff};
 }
 
 function renderWatchlist() {
@@ -384,8 +385,13 @@ function renderWatchlist() {
             sparkCandle(d.spark, wrap, true);
             const p = _sparkPrice(d.spark);
             const priceEl = item.querySelector(".wl-price");
+            const diffEl = item.querySelector(".wl-diff");
             const chgEl = item.querySelector(".wl-change");
             if (priceEl && p.price != null) priceEl.textContent = p.price.toLocaleString("ja-JP");
+            if (diffEl && p.diff != null) {
+              diffEl.textContent = (p.diff >= 0 ? "+" : "") + Math.round(p.diff).toLocaleString("ja-JP") + "円";
+              diffEl.className = "wl-diff " + (p.diff >= 0 ? "up" : "down");
+            }
             if (chgEl && p.change != null) {
               chgEl.textContent = (p.change >= 0 ? "+" : "") + p.change.toFixed(2) + "%";
               chgEl.className = "wl-change " + (p.change >= 0 ? "up" : "down");
@@ -398,12 +404,17 @@ function renderWatchlist() {
     /* ── 下段: 数値 ── */
     const stats = document.createElement("div");
     stats.className = "wl-stats";
-    const {price, change} = _sparkPrice(info.spark);
+    const {price, change, diff} = _sparkPrice(info.spark);
 
     const priceSpan = document.createElement("span");
     priceSpan.className = "wl-price";
     priceSpan.textContent = price != null ? price.toLocaleString("ja-JP") : "-";
     stats.appendChild(priceSpan);
+
+    const diffSpan = document.createElement("span");
+    diffSpan.className = "wl-diff " + (diff != null ? (diff >= 0 ? "up" : "down") : "");
+    diffSpan.textContent = diff != null ? (diff >= 0 ? "+" : "") + Math.round(diff).toLocaleString("ja-JP") + "円" : "-";
+    stats.appendChild(diffSpan);
 
     const chgSpan = document.createElement("span");
     chgSpan.className = "wl-change " + (change != null ? (change >= 0 ? "up" : "down") : "");

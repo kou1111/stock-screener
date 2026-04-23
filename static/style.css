@@ -365,6 +365,14 @@ header .badge-auto {
   color: var(--text);
   white-space: nowrap;
 }
+.wl-diff {
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.wl-diff.up   { color: var(--red); }
+.wl-diff.down { color: var(--accent); }
 .wl-change {
   font-family: 'SF Mono', 'Menlo', monospace;
   font-size: 12px;
