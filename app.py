@@ -836,18 +836,18 @@ def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
     )
 
     try:
-        resp = client.chat.completions.create(
+        resp = client.responses.create(
             model="o3",
-            reasoning_effort="high",
+            reasoning={"effort": "high"},
             tools=[{"type": "web_search_preview"}],
-            messages=[{"role": "user", "content": prompt}],
+            input=prompt,
             timeout=REASON_TIMEOUT * 3,
         )
     except Exception as e:
         logging.error("理由調査 API呼び出しエラー: %s — %s", type(e).__name__, e)
         raise
 
-    result = resp.choices[0].message.content if resp.choices else "理由を特定できませんでした。"
+    result = resp.output_text if resp.output_text else "理由を特定できませんでした。"
     logging.info("理由調査完了: %s (%d文字)", code, len(result))
     return result
 
