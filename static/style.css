@@ -545,7 +545,7 @@ header .badge-auto {
 }
 
 /* ── 銘柄検索 ─────────────────────────────────── */
-.wl-search-wrap { position: relative; margin-bottom: 12px; }
+.wl-search-wrap { position: relative; margin-bottom: 12px; width: 250px; }
 .wl-search-input {
   width: 100%;
   padding: 10px 14px;
