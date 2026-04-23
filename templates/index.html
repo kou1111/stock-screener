@@ -2156,6 +2156,17 @@ function toggleReasonPanel() {
   }
 }
 
+function _translateError(msg) {
+  const m = (msg || "").toLowerCase();
+  if (m.includes("rate limit") || m.includes("rate_limit")) return "アクセス制限中です。しばらく待ってから再試行してください。（約15秒後）";
+  if (m.includes("insufficient_quota")) return "APIのクレジットが不足しています。OpenAIのダッシュボードで確認してください。";
+  if (m.includes("invalid_api_key") || m.includes("invalid api key")) return "APIキーが無効です。設定を確認してください。";
+  if (m.includes("timeout") || m.includes("timed out")) return "タイムアウトしました。再度お試しください。";
+  if (m.includes("500") || m.includes("internal server error")) return "サーバーエラーが発生しました。再度お試しください。";
+  if (m.includes("failed to fetch") || m.includes("networkerror") || m.includes("network")) return "通信エラーが発生しました。ネットワーク接続を確認してください。";
+  return "エラーが発生しました。しばらく待ってから再試行してください。";
+}
+
 async function investigateReason(btn, code, name) {
   gaSend('reason_investigate', {code, name});
   const body = document.getElementById("rp-body");
@@ -2183,7 +2194,7 @@ async function investigateReason(btn, code, name) {
     myJobId = startData.job_id;
     _reasonJobId = myJobId;
   } catch (e) {
-    body.innerHTML = `<div class="rc-fallback" style="color:var(--red)">エラー: ${e.message}</div>`;
+    body.innerHTML = `<div class="rc-fallback" style="color:var(--red)">${_translateError(e.message)}</div>`;
     return;
   }
 
@@ -2213,7 +2224,7 @@ async function investigateReason(btn, code, name) {
       }
     } catch (e) {
       if (_reasonJobId !== myJobId) break;
-      body.innerHTML = `<div class="rc-fallback" style="color:var(--red)">エラー: ${e.message}</div>`;
+      body.innerHTML = `<div class="rc-fallback" style="color:var(--red)">${_translateError(e.message)}</div>`;
       break;
     }
   }

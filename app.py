@@ -853,6 +853,23 @@ def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
     return result
 
 
+def _translate_api_error(e: Exception) -> str:
+    """OpenAI APIエラーを日本語メッセージに変換"""
+    msg = str(e).lower()
+    cls = type(e).__name__.lower()
+    if "rate limit" in msg or "rate_limit" in msg:
+        return "アクセス制限中です。しばらく待ってから再試行してください。（約15秒後）"
+    if "insufficient_quota" in msg:
+        return "APIのクレジットが不足しています。OpenAIのダッシュボードで確認してください。"
+    if "invalid_api_key" in msg or "invalid api key" in msg:
+        return "APIキーが無効です。設定を確認してください。"
+    if "timeout" in cls or "timeout" in msg or "timed out" in msg:
+        return "タイムアウトしました。再度お試しください。"
+    if "500" in msg or "internal server error" in msg or "server_error" in msg:
+        return "サーバーエラーが発生しました。再度お試しください。"
+    return "エラーが発生しました。しばらく待ってから再試行してください。"
+
+
 # ── ルーティング ───────────────────────────────────
 @app.route("/")
 def index():
@@ -1087,13 +1104,13 @@ def api_reason_start(code):
             except Exception as e:
                 logging.exception("理由調査エラー: %s", code)
                 _update_job(job_id, status="error",
-                            message=f"調査中にエラーが発生しました: {e}")
+                            message=_translate_api_error(e))
 
         _reason_pool.submit(_run)
         return jsonify({"ok": True, "job_id": job_id})
     except Exception as e:
         logging.exception("理由調査開始エラー: %s", code)
-        return jsonify({"ok": False, "error": str(e)})
+        return jsonify({"ok": False, "error": _translate_api_error(e)})
 
 
 @app.route("/api/reason/poll/<job_id>")
