@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=60">
+  <link rel="stylesheet" href="/static/style.css?v=61">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -2167,7 +2167,7 @@ async function investigateReason(btn, code, name) {
     return;
   }
 
-  body.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span><p id="rp-step" style="margin-top:12px;color:var(--muted)">🔍 調査中...</p></div>';
+  body.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span><p id="rp-step" style="margin-top:12px;color:var(--muted)">🔍 o3で徹底調査中...</p></div>';
   openReasonPanel(code, name);
 
   let myJobId;
@@ -2199,7 +2199,7 @@ async function investigateReason(btn, code, name) {
       if (d.step) {
         const stepEl = document.getElementById("rp-step");
         if (stepEl) {
-          if (d.step === "searching") stepEl.textContent = "🔍 調査中...";
+          if (d.step === "searching") stepEl.textContent = "🔍 o3で徹底調査中...";
         }
       }
       if (d.status === "done") {
