@@ -480,15 +480,16 @@ function renderWatchlist() {
 
     const alertDrop = document.createElement("div");
     alertDrop.className = "wl-alert-drop";
+    const curPrice = price != null ? Math.round(price) : "";
     alertDrop.innerHTML = `
       <div class="wl-alert-field">
         <span class="wl-alert-label">上限価格</span>
-        <input type="number" class="wl-alert-input" id="al-upper-${code}" value="${al.upper != null ? al.upper : ""}" placeholder="---">
+        <input type="number" class="wl-alert-input" id="al-upper-${code}" min="0" step="1" value="${al.upper != null ? al.upper : ""}" placeholder="例：${curPrice ? Math.round(curPrice * 1.05) : 1500}">
         <span class="wl-alert-unit">円以上</span>
       </div>
       <div class="wl-alert-field">
         <span class="wl-alert-label">下限価格</span>
-        <input type="number" class="wl-alert-input" id="al-lower-${code}" value="${al.lower != null ? al.lower : ""}" placeholder="---">
+        <input type="number" class="wl-alert-input" id="al-lower-${code}" min="0" step="1" value="${al.lower != null ? al.lower : ""}" placeholder="例：${curPrice ? Math.round(curPrice * 0.95) : 1500}">
         <span class="wl-alert-unit">円以下</span>
       </div>
       <div class="wl-alert-actions">
