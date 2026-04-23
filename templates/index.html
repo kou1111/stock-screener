@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=47">
+  <link rel="stylesheet" href="/static/style.css?v=48">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -544,6 +544,7 @@ function renderWatchlist() {
       <div class="wl-alert-field">
         <span class="wl-alert-label">📅 日付</span>
         <input type="date" class="wl-alert-input wl-alert-date" id="al-date-${code}" value="">
+        <button type="button" class="wl-alert-cal-btn" id="al-calbtn-${code}">📅</button>
       </div>
       <div class="wl-alert-field">
         <span class="wl-alert-label">メモ</span>
@@ -560,6 +561,11 @@ function renderWatchlist() {
     alertToggle.addEventListener("click", (e) => {
       e.stopPropagation();
       alertDrop.classList.toggle("open");
+    });
+    alertDrop.querySelector(`#al-calbtn-${code}`).addEventListener("click", (e) => {
+      e.stopPropagation();
+      const dateInput = alertDrop.querySelector(`#al-date-${code}`);
+      if (dateInput.showPicker) dateInput.showPicker(); else dateInput.focus();
     });
     // 既存の日付アラートをリスト表示
     const _renderDateList = () => {

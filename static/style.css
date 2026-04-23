@@ -526,6 +526,17 @@ header .badge-auto {
 .wl-alert-date {
   width: 140px;
 }
+.wl-alert-cal-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  transition: border-color 0.2s;
+}
+.wl-alert-cal-btn:hover { border-color: #58a6ff; }
 .wl-alert-date-memo {
   width: 100%;
   flex: 1;
