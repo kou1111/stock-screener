@@ -1353,6 +1353,7 @@ function toggleReasonPanel() {
   if (_rpIsOpen()) { closeReasonPanel(); }
   else if (_reasonHistory.length > 0) {
     document.getElementById("reason-panel").classList.add("open");
+    document.querySelector(".container").classList.add("rp-pushed");
     _rpUpdateToggle(true);
   }
 }
