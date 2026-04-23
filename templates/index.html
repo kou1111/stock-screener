@@ -6,6 +6,18 @@
   <title>Stock Screener</title>
   <link rel="stylesheet" href="/static/style.css?v=32">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  {% if ga_id %}
+  <script async src="https://www.googletagmanager.com/gtag/js?id={{ ga_id }}"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', '{{ ga_id }}');
+    function gaSend(name, params) { if (typeof gtag === 'function') gtag('event', name, params || {}); }
+  </script>
+  {% else %}
+  <script>function gaSend(){}</script>
+  {% endif %}
 </head>
 <body>
 <div class="container">
@@ -284,6 +296,7 @@ function toggleWatchlist(ticker, name, turnover, market_cap, spark) {
     watchlist.delete(ticker);
   } else {
     watchlist.set(ticker, {name, turnover: turnover || null, market_cap: market_cap || null, spark: spark || null});
+    gaSend('add_watchlist', {ticker, name});
   }
   saveWatchlist();
   renderWatchlist();
@@ -639,6 +652,7 @@ function sparkCandle(ohlc, el, wide) {
 /* ── スクリーニング実行 ──────────────────────────── */
 async function runScreen(isAutoRetry, fresh) {
   stopPolling();
+  if (!isAutoRetry) gaSend('run_screening', {days: getEnabledDays().join(',')});
 
   if (!isAutoRetry) {
     autoRetryCount = 0;
@@ -909,6 +923,7 @@ async function fetchPts() {
   const tbody = document.getElementById("pts-tbody");
   const threshold = parseFloat(ptsThresholdInput.value) || 3;
   localStorage.setItem(PTS_THRESHOLD_KEY, ptsThresholdInput.value);
+  gaSend('fetch_pts', {threshold});
 
   btn.disabled = true;
   btn.textContent = "取得中...";
@@ -1008,6 +1023,7 @@ function stopIntradayPolling() {
 
 async function fetchIntraday() {
   stopIntradayPolling();
+  gaSend('fetch_intraday');
 
   const btn = document.getElementById("intraday-btn");
   const status = document.getElementById("intraday-status");
@@ -1343,6 +1359,7 @@ function toggleReasonPanel() {
 }
 
 async function investigateReason(btn, code, name) {
+  gaSend('investigate_reason', {code, name});
   const body = document.getElementById("rp-body");
   // 既に履歴にあればそれを表示
   const existing = _reasonHistory.find(h => h.code === code);

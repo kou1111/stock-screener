@@ -856,7 +856,8 @@ def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
 # ── ルーティング ───────────────────────────────────
 @app.route("/")
 def index():
-    return render_template("index.html")
+    ga_id = os.environ.get("GOOGLE_ANALYTICS_ID", "")
+    return render_template("index.html", ga_id=ga_id)
 
 
 @app.route("/api/screen/start", methods=["POST"])
