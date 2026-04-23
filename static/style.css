@@ -1096,15 +1096,12 @@ header .badge-auto {
 
 .rp-history-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
-  overflow-x: auto;
   flex-shrink: 0;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
 }
-.rp-history-tabs::-webkit-scrollbar { display: none; }
 .rp-history-tabs:empty { display: none; }
 
 .rp-htab {
@@ -1119,7 +1116,6 @@ header .badge-auto {
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
-  flex-shrink: 0;
   transition: background 0.15s, border-color 0.15s;
 }
 .rp-htab:hover { background: rgba(255,255,255,0.06); }
