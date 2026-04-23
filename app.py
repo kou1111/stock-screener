@@ -1048,7 +1048,24 @@ def api_spark(ticker):
         except Exception:
             mcap = 0
         mkt = _jpx_markets.get(ticker, "")
-        return jsonify({"ok": True, "spark": spark, "market_cap": mcap, "market": mkt})
+        # 決算日取得
+        earnings_date = None
+        try:
+            cal = tk.calendar
+            if cal is not None:
+                if isinstance(cal, pd.DataFrame) and "Earnings Date" in cal.columns:
+                    ed = cal["Earnings Date"].iloc[0]
+                    earnings_date = pd.Timestamp(ed).strftime("%Y-%m-%d")
+                elif isinstance(cal, dict):
+                    ed = cal.get("Earnings Date") or cal.get("earningsDate")
+                    if ed is not None:
+                        if isinstance(ed, (list, pd.Series)):
+                            ed = ed[0] if len(ed) > 0 else None
+                        if ed is not None:
+                            earnings_date = pd.Timestamp(ed).strftime("%Y-%m-%d")
+        except Exception:
+            pass
+        return jsonify({"ok": True, "spark": spark, "market_cap": mcap, "market": mkt, "earnings_date": earnings_date})
     except Exception as e:
         logging.warning("Spark取得エラー (%s): %s", ticker, e)
         return jsonify({"ok": True, "spark": [], "market_cap": 0, "market": ""})

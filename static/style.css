@@ -453,6 +453,13 @@ header .badge-auto {
   font-family: 'SF Mono', 'Menlo', monospace;
   white-space: nowrap;
 }
+.wl-earnings {
+  color: var(--faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.wl-earn-soon { color: #ff9f0a; }
+.wl-earn-near { color: #ffd60a; }
 
 .wl-memo-wrap {
   position: relative;

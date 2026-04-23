@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=57">
+  <link rel="stylesheet" href="/static/style.css?v=58">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -291,7 +291,7 @@ function _syncActiveWatchlist() {
   const list = wlLists[wlActiveIdx];
   if (!list) return;
   for (const item of list.tickers) {
-    watchlist.set(item.ticker, {name: item.name, turnover: item.turnover, market_cap: item.market_cap, spark: item.spark, market: item.market});
+    watchlist.set(item.ticker, {name: item.name, turnover: item.turnover, market_cap: item.market_cap, spark: item.spark, market: item.market, earnings_date: item.earnings_date || null});
   }
 }
 
@@ -346,7 +346,7 @@ function saveWatchlist() {
   if (list) {
     list.tickers = [];
     for (const [ticker, info] of watchlist) {
-      list.tickers.push({ticker, name: info.name, turnover: info.turnover, market_cap: info.market_cap, spark: info.spark, market: info.market});
+      list.tickers.push({ticker, name: info.name, turnover: info.turnover, market_cap: info.market_cap, spark: info.spark, market: info.market, earnings_date: info.earnings_date});
     }
   }
   localStorage.setItem(WL_LISTS_KEY, JSON.stringify({version: 2, activeIdx: wlActiveIdx, lists: wlLists}));
@@ -449,7 +449,7 @@ function toggleWatchlist(ticker, name, turnover, market_cap, spark, market) {
   if (watchlist.has(ticker)) {
     watchlist.delete(ticker);
   } else {
-    watchlist.set(ticker, {name, turnover: turnover || null, market_cap: market_cap || null, spark: spark || null, market: market || null});
+    watchlist.set(ticker, {name, turnover: turnover || null, market_cap: market_cap || null, spark: spark || null, market: market || null, earnings_date: null});
     gaSend('watchlist_add', {ticker, name});
   }
   saveWatchlist();
@@ -473,6 +473,19 @@ function _sparkPrice(spark) {
   const change = prevClose > 0 ? (price - prevClose) / prevClose * 100 : null;
   const diff = prevClose > 0 ? price - prevClose : null;
   return {price, change, diff};
+}
+
+function _formatEarnings(dateStr) {
+  if (!dateStr) return {text: "決算日不明", cls: ""};
+  const d = new Date(dateStr);
+  const now = new Date(); now.setHours(0,0,0,0);
+  const diff = (d - now) / 86400000;
+  const m = d.getMonth() + 1, day = d.getDate();
+  const text = "決算 " + m + "/" + day;
+  if (diff < 0) return {text, cls: ""};
+  if (diff <= 7) return {text, cls: "wl-earn-soon"};
+  if (diff <= 14) return {text, cls: "wl-earn-near"};
+  return {text, cls: ""};
 }
 
 /* ── ドラッグ＆ドロップ (mouse events) ── */
@@ -701,6 +714,15 @@ function renderWatchlist() {
                 hdrEl.insertBefore(b, hdrEl.firstChild);
               }
             }
+            if (d.earnings_date) {
+              inf.earnings_date = d.earnings_date;
+              const edEl = item.querySelector(".wl-earnings");
+              if (edEl) {
+                const {text, cls} = _formatEarnings(d.earnings_date);
+                edEl.textContent = text;
+                edEl.className = "wl-earnings " + cls;
+              }
+            }
             saveWatchlist();
             sparkCandle(d.spark, wrap, true);
             const p = _sparkPrice(d.spark);
@@ -745,6 +767,12 @@ function renderWatchlist() {
     mcSpan.className = "wl-meta";
     mcSpan.textContent = info.market_cap ? "時価総額" + formatMarketCap(info.market_cap) : "-";
     stats.appendChild(mcSpan);
+
+    const {text: earnText, cls: earnCls} = _formatEarnings(info.earnings_date);
+    const earnSpan = document.createElement("span");
+    earnSpan.className = "wl-earnings " + earnCls;
+    earnSpan.textContent = info.earnings_date ? earnText : "決算日不明";
+    stats.appendChild(earnSpan);
     item.appendChild(stats);
 
     /* ── アラート設定 ── */
