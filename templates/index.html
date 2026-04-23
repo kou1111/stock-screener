@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=52">
+  <link rel="stylesheet" href="/static/style.css?v=53">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -476,10 +476,10 @@ function _sparkPrice(spark) {
 }
 
 /* ── ドラッグ＆ドロップ (mouse events) ── */
-let _drag = null; // {el, ticker, placeholder, startX, startY, offsetX, offsetY, body, items}
+let _drag = null;
+const _DRAG_DAMP = 0.35; // ダンピング係数（0=即追従, 1=完全遅延）
 
 function _onDragMouseDown(e, item, ticker) {
-  // ボタン・input・textarea・リンクのクリックは無視
   if (e.button !== 0) return;
   const tag = e.target.tagName;
   if (tag === "BUTTON" || tag === "INPUT" || tag === "TEXTAREA" || tag === "A" || tag === "SELECT") return;
@@ -490,41 +490,56 @@ function _onDragMouseDown(e, item, ticker) {
     el: item, ticker,
     startX: e.clientX, startY: e.clientY,
     offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top,
+    curX: rect.left, curY: rect.top,       // ダンピング用の現在位置
+    targetX: rect.left, targetY: rect.top,  // マウスが指す目標位置
     body: document.getElementById("watchlist-body"),
-    started: false, placeholder: null
+    started: false, placeholder: null, raf: null, lastInsert: null
   };
   document.addEventListener("mousemove", _onDragMouseMove);
   document.addEventListener("mouseup", _onDragMouseUp);
   e.preventDefault();
 }
 
+function _dragAnimLoop() {
+  if (!_drag || !_drag.started) return;
+  // ダンピング: 現在位置を目標位置に徐々に近づける
+  _drag.curX += (_drag.targetX - _drag.curX) * (1 - _DRAG_DAMP);
+  _drag.curY += (_drag.targetY - _drag.curY) * (1 - _DRAG_DAMP);
+  // 動きの速度から傾きを算出（横方向）
+  const vx = _drag.targetX - _drag.curX;
+  const rot = Math.max(-3, Math.min(3, vx * 0.15));
+  _drag.el.style.left = _drag.curX + "px";
+  _drag.el.style.top = _drag.curY + "px";
+  _drag.el.style.transform = `scale(1.05) rotate(${rot}deg)`;
+  _drag.raf = requestAnimationFrame(_dragAnimLoop);
+}
+
 function _onDragMouseMove(e) {
   if (!_drag) return;
   const dx = e.clientX - _drag.startX, dy = e.clientY - _drag.startY;
-  // 5pxの遊びでドラッグ開始判定
   if (!_drag.started) {
     if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
     _drag.started = true;
     const rect = _drag.el.getBoundingClientRect();
-    // プレースホルダー
     const ph = document.createElement("div");
     ph.className = "wl-drag-placeholder";
     ph.style.width = rect.width + "px";
     ph.style.height = rect.height + "px";
     _drag.el.parentNode.insertBefore(ph, _drag.el);
     _drag.placeholder = ph;
-    // カードを浮かす
     _drag.el.classList.add("wl-dragging");
     _drag.el.style.position = "fixed";
     _drag.el.style.zIndex = "9999";
     _drag.el.style.width = rect.width + "px";
-    _drag.el.style.left = (e.clientX - _drag.offsetX) + "px";
-    _drag.el.style.top = (e.clientY - _drag.offsetY) + "px";
     _drag.el.style.pointerEvents = "none";
+    _drag.curX = rect.left;
+    _drag.curY = rect.top;
+    // アニメーションループ開始
+    _drag.raf = requestAnimationFrame(_dragAnimLoop);
   }
-  _drag.el.style.left = (e.clientX - _drag.offsetX) + "px";
-  _drag.el.style.top = (e.clientY - _drag.offsetY) + "px";
-  // 挿入位置の判定
+  _drag.targetX = e.clientX - _drag.offsetX;
+  _drag.targetY = e.clientY - _drag.offsetY;
+  // 挿入位置の判定（中心超えで発動）
   const items = [..._drag.body.querySelectorAll(".watchlist-item:not(.wl-dragging)")];
   let closest = null, closestDist = Infinity;
   for (const it of items) {
@@ -535,11 +550,18 @@ function _onDragMouseMove(e) {
   }
   if (closest && _drag.placeholder) {
     const r = closest.getBoundingClientRect();
-    const mid = r.top + r.height / 2;
-    if (e.clientY < mid) {
-      _drag.body.insertBefore(_drag.placeholder, closest);
+    const midY = r.top + r.height / 2;
+    const midX = r.left + r.width / 2;
+    let ref;
+    if (e.clientY < midY) {
+      ref = closest;
     } else {
-      _drag.body.insertBefore(_drag.placeholder, closest.nextSibling);
+      ref = closest.nextSibling;
+    }
+    // 同じ位置への再挿入を防止
+    if (ref !== _drag.lastInsert) {
+      _drag.lastInsert = ref;
+      _drag.body.insertBefore(_drag.placeholder, ref);
     }
   }
 }
@@ -548,32 +570,57 @@ function _onDragMouseUp(e) {
   document.removeEventListener("mousemove", _onDragMouseMove);
   document.removeEventListener("mouseup", _onDragMouseUp);
   if (!_drag) return;
+  if (_drag.raf) cancelAnimationFrame(_drag.raf);
   if (!_drag.started) { _drag = null; return; }
-  // 着地アニメーション
   const ph = _drag.placeholder;
   const el = _drag.el;
+  // 着地位置を計算してアニメーション
   if (ph) {
-    // プレースホルダーの位置にカードを挿入
-    _drag.body.insertBefore(el, ph);
-    ph.remove();
+    const phRect = ph.getBoundingClientRect();
+    el.style.transition = "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)";
+    el.style.left = phRect.left + "px";
+    el.style.top = phRect.top + "px";
+    el.style.transform = "scale(1) rotate(0deg)";
+    el.style.opacity = "1";
+    el.style.boxShadow = "";
+    const onEnd = () => {
+      el.removeEventListener("transitionend", onEnd);
+      el.classList.remove("wl-dragging");
+      el.style.position = "";
+      el.style.zIndex = "";
+      el.style.width = "";
+      el.style.left = "";
+      el.style.top = "";
+      el.style.transform = "";
+      el.style.opacity = "";
+      el.style.pointerEvents = "";
+      el.style.transition = "";
+      if (ph.parentNode) {
+        _drag.body.insertBefore(el, ph);
+        ph.remove();
+      }
+      // 新しい順番をMapに反映
+      const newOrder = [..._drag.body.querySelectorAll(".watchlist-item")].map(it => it.dataset.ticker);
+      const map = new Map([...watchlist.entries()]);
+      watchlist.clear();
+      for (const t of newOrder) { if (map.has(t)) watchlist.set(t, map.get(t)); }
+      saveWatchlist();
+      _drag = null;
+    };
+    el.addEventListener("transitionend", onEnd);
+    // フォールバック（transitionendが発火しない場合）
+    setTimeout(onEnd, 400);
+  } else {
+    el.classList.remove("wl-dragging");
+    el.style.position = "";
+    el.style.zIndex = "";
+    el.style.width = "";
+    el.style.left = "";
+    el.style.top = "";
+    el.style.transform = "";
+    el.style.pointerEvents = "";
+    _drag = null;
   }
-  el.classList.remove("wl-dragging");
-  el.style.position = "";
-  el.style.zIndex = "";
-  el.style.width = "";
-  el.style.left = "";
-  el.style.top = "";
-  el.style.pointerEvents = "";
-  el.classList.add("wl-drop-land");
-  setTimeout(() => el.classList.remove("wl-drop-land"), 300);
-  // 新しい順番をMapに反映
-  const newOrder = [..._drag.body.querySelectorAll(".watchlist-item")].map(it => it.dataset.ticker);
-  const entries = [...watchlist.entries()];
-  const map = new Map(entries);
-  watchlist.clear();
-  for (const t of newOrder) { if (map.has(t)) watchlist.set(t, map.get(t)); }
-  saveWatchlist();
-  _drag = null;
 }
 
 function renderWatchlist() {
