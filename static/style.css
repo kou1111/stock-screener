@@ -482,7 +482,8 @@ header .badge-auto {
   font-size: 12px;
   font-family: inherit;
   outline: none;
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
   min-height: 60px;
   transition: border-color 0.2s;
 }

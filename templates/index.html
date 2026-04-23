@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=50">
+  <link rel="stylesheet" href="/static/style.css?v=51">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -802,15 +802,17 @@ function renderWatchlist() {
     memoDrop.appendChild(memoArea);
     memoWrap.appendChild(memoDrop);
 
+    const _autoResize = () => { memoArea.style.height = "auto"; memoArea.style.height = memoArea.scrollHeight + "px"; };
     memoPreview.addEventListener("click", (e) => {
       e.stopPropagation();
       const isOpen = memoDrop.classList.toggle("open");
-      if (isOpen) { memoArea.focus(); }
+      if (isOpen) { memoArea.focus(); requestAnimationFrame(_autoResize); }
     });
     memoArea.addEventListener("input", () => {
       saveMemo(ticker, memoArea.value);
       memoPreview.textContent = memoArea.value || "メモを入力...";
       memoPreview.classList.toggle("empty", !memoArea.value);
+      _autoResize();
     });
     document.addEventListener("click", (e) => {
       if (!memoWrap.contains(e.target)) memoDrop.classList.remove("open");
