@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=42">
+  <link rel="stylesheet" href="/static/style.css?v=43">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -482,17 +482,21 @@ function renderWatchlist() {
     const alertDrop = document.createElement("div");
     alertDrop.className = "wl-alert-drop";
     const curPrice = price != null ? Math.round(price) : "";
+    const upperDefault = al.upper != null ? al.upper : (curPrice || "");
+    const lowerDefault = al.lower != null ? al.lower : (curPrice || "");
     alertDrop.innerHTML = `
       <div class="wl-alert-field">
         <span class="wl-alert-label">上限価格</span>
-        <input type="number" class="wl-alert-input" id="al-upper-${code}" min="0" step="1" value="${al.upper != null ? al.upper : ""}" placeholder="例：${curPrice ? Math.round(curPrice * 1.05) : 1500}">
+        <input type="number" class="wl-alert-input" id="al-upper-${code}" min="${curPrice || 0}" step="1" value="${upperDefault}" placeholder="例：${curPrice || 1500}">
         <span class="wl-alert-unit">円以上</span>
       </div>
+      <div class="wl-alert-error" id="al-err-upper-${code}"></div>
       <div class="wl-alert-field">
         <span class="wl-alert-label">下限価格</span>
-        <input type="number" class="wl-alert-input" id="al-lower-${code}" min="0" step="1" value="${al.lower != null ? al.lower : ""}" placeholder="例：${curPrice ? Math.round(curPrice * 0.95) : 1500}">
+        <input type="number" class="wl-alert-input" id="al-lower-${code}" min="0" ${curPrice ? `max="${curPrice}"` : ""} step="1" value="${lowerDefault}" placeholder="例：${curPrice || 1500}">
         <span class="wl-alert-unit">円以下</span>
       </div>
+      <div class="wl-alert-error" id="al-err-lower-${code}"></div>
       <div class="wl-alert-actions">
         <button class="wl-alert-save" data-ticker="${ticker}">保存</button>
         <button class="wl-alert-clear" data-ticker="${ticker}">解除</button>
@@ -510,6 +514,20 @@ function renderWatchlist() {
       const lVal = alertDrop.querySelector(`#al-lower-${code}`).value;
       const upper = uVal ? parseFloat(uVal) : null;
       const lower = lVal ? parseFloat(lVal) : null;
+      const errU = alertDrop.querySelector(`#al-err-upper-${code}`);
+      const errL = alertDrop.querySelector(`#al-err-lower-${code}`);
+      errU.textContent = "";
+      errL.textContent = "";
+      let hasError = false;
+      if (upper != null && curPrice && upper < curPrice) {
+        errU.textContent = "現在値より高い価格を設定してください";
+        hasError = true;
+      }
+      if (lower != null && curPrice && lower > curPrice) {
+        errL.textContent = "現在値より低い価格を設定してください";
+        hasError = true;
+      }
+      if (hasError) return;
       if (upper == null && lower == null) {
         delete alertSettings[ticker];
       } else {

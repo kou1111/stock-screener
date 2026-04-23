@@ -507,6 +507,13 @@ header .badge-auto {
   font-size: 12px;
   color: var(--faint);
 }
+.wl-alert-error {
+  font-size: 11px;
+  color: var(--red);
+  padding: 0 0 4px 64px;
+  min-height: 0;
+}
+.wl-alert-error:empty { display: none; }
 .wl-alert-actions {
   display: flex;
   gap: 8px;
