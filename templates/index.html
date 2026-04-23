@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=43">
+  <link rel="stylesheet" href="/static/style.css?v=44">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -444,7 +444,8 @@ function renderWatchlist() {
     const alertWrap = document.createElement("div");
     alertWrap.className = "wl-alert-wrap";
     const al = alertSettings[ticker] || {};
-    const hasAlert = al.upper != null || al.lower != null;
+    const dateAlerts = al.dateAlerts || [];
+    const hasAlert = al.upper != null || al.lower != null || dateAlerts.length > 0;
 
     const alertInline = document.createElement("div");
     alertInline.className = "wl-alert-row-inline";
@@ -455,6 +456,10 @@ function renderWatchlist() {
       let parts = [];
       if (al.upper != null) parts.push("↑" + al.upper.toLocaleString("ja-JP"));
       if (al.lower != null) parts.push("↓" + al.lower.toLocaleString("ja-JP"));
+      for (const da of dateAlerts) {
+        const d = new Date(da.date);
+        parts.push("📅" + (d.getMonth()+1) + "/" + d.getDate());
+      }
       infoSpan.textContent = "🔔 " + parts.join(" ");
       alertInline.appendChild(infoSpan);
     }
@@ -497,6 +502,16 @@ function renderWatchlist() {
         <span class="wl-alert-unit">円以下</span>
       </div>
       <div class="wl-alert-error" id="al-err-lower-${code}"></div>
+      <div class="wl-alert-sep"></div>
+      <div class="wl-alert-field">
+        <span class="wl-alert-label">📅 日付</span>
+        <input type="date" class="wl-alert-input wl-alert-date" id="al-date-${code}" value="">
+      </div>
+      <div class="wl-alert-field">
+        <span class="wl-alert-label">メモ</span>
+        <input type="text" class="wl-alert-input wl-alert-date-memo" id="al-datememo-${code}" value="" placeholder="例：決算発表日">
+      </div>
+      <div class="wl-alert-datelist" id="al-datelist-${code}"></div>
       <div class="wl-alert-actions">
         <button class="wl-alert-save" data-ticker="${ticker}">保存</button>
         <button class="wl-alert-clear" data-ticker="${ticker}">解除</button>
@@ -508,6 +523,29 @@ function renderWatchlist() {
       e.stopPropagation();
       alertDrop.classList.toggle("open");
     });
+    // 既存の日付アラートをリスト表示
+    const _renderDateList = () => {
+      const listEl = alertDrop.querySelector(`#al-datelist-${code}`);
+      const curDates = (alertSettings[ticker] || {}).dateAlerts || [];
+      if (curDates.length === 0) { listEl.innerHTML = ""; return; }
+      listEl.innerHTML = curDates.map((da, i) => {
+        const d = new Date(da.date);
+        const label = `${d.getMonth()+1}/${d.getDate()} ${da.memo || ""}`;
+        return `<div class="wl-alert-dateitem"><span>📅 ${label}</span><button class="wl-alert-daterm" data-idx="${i}">&times;</button></div>`;
+      }).join("");
+      listEl.querySelectorAll(".wl-alert-daterm").forEach(btn => {
+        btn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const idx = parseInt(btn.dataset.idx);
+          const a = alertSettings[ticker];
+          if (a && a.dateAlerts) { a.dateAlerts.splice(idx, 1); if (a.dateAlerts.length === 0) delete a.dateAlerts; }
+          if (a && a.upper == null && a.lower == null && (!a.dateAlerts || a.dateAlerts.length === 0)) delete alertSettings[ticker];
+          saveAlerts(); renderWatchlist(); _restartAlertPolling();
+        });
+      });
+    };
+    _renderDateList();
+
     alertDrop.querySelector(".wl-alert-save").addEventListener("click", (e) => {
       e.stopPropagation();
       const uVal = alertDrop.querySelector(`#al-upper-${code}`).value;
@@ -528,10 +566,18 @@ function renderWatchlist() {
         hasError = true;
       }
       if (hasError) return;
-      if (upper == null && lower == null) {
+      // 新規日付アラートがあれば追加
+      const dateVal = alertDrop.querySelector(`#al-date-${code}`).value;
+      const memoVal = alertDrop.querySelector(`#al-datememo-${code}`).value.trim();
+      const existing = (alertSettings[ticker] || {}).dateAlerts || [];
+      if (dateVal) existing.push({date: dateVal, memo: memoVal});
+      const hasPrice = upper != null || lower != null;
+      const hasDates = existing.length > 0;
+      if (!hasPrice && !hasDates) {
         delete alertSettings[ticker];
       } else {
         alertSettings[ticker] = {upper, lower};
+        if (hasDates) alertSettings[ticker].dateAlerts = existing;
       }
       saveAlerts();
       if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
@@ -662,6 +708,17 @@ function _showAlertBanner(code, name, target, current) {
   container.appendChild(banner);
 }
 
+function _showDateAlertBanner(code, name, dateStr, memo) {
+  const container = document.getElementById("alert-banners");
+  const banner = document.createElement("div");
+  banner.className = "alert-banner alert-banner-date";
+  const memoText = memo ? `｜${memo}` : "";
+  banner.innerHTML =
+    `<span>📅 日付アラート：${code} ${name}｜${dateStr}${memoText}</span>` +
+    `<button class="alert-banner-close" onclick="this.parentElement.remove()">&times;</button>`;
+  container.appendChild(banner);
+}
+
 function _restartAlertPolling() {
   if (_alertTimer) { clearInterval(_alertTimer); _alertTimer = null; }
   const hasAny = Object.keys(alertSettings).some(t => watchlist.has(t));
@@ -674,35 +731,65 @@ async function _checkAlertsOnLoad() {
   const tickers = Object.keys(alertSettings).filter(t => watchlist.has(t));
   if (tickers.length === 0) return;
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let changed = false;
+
   for (const ticker of tickers) {
     const al = alertSettings[ticker];
-    if (!al || (al.upper == null && al.lower == null)) continue;
-    try {
-      const res = await fetch(`/api/spark/${encodeURIComponent(ticker)}`);
-      const d = await res.json();
-      if (!d.ok || !d.spark || d.spark.length < 1) continue;
-      const current = d.spark[d.spark.length - 1][3];
-      if (current == null) continue;
-      const code = displayCode(ticker);
-      const name = (watchlist.get(ticker) || {}).name || code;
-      let fired = false;
+    if (!al) continue;
+    const code = displayCode(ticker);
+    const name = (watchlist.get(ticker) || {}).name || code;
 
-      if (al.upper != null && current >= al.upper) {
-        _showAlertBanner(code, name, al.upper, current);
-        al.upper = null;
-        fired = true;
+    // 価格アラートチェック
+    if (al.upper != null || al.lower != null) {
+      try {
+        const res = await fetch(`/api/spark/${encodeURIComponent(ticker)}`);
+        const d = await res.json();
+        if (d.ok && d.spark && d.spark.length >= 1) {
+          const current = d.spark[d.spark.length - 1][3];
+          if (current != null) {
+            if (al.upper != null && current >= al.upper) {
+              _showAlertBanner(code, name, al.upper, current);
+              al.upper = null;
+              changed = true;
+            }
+            if (al.lower != null && current <= al.lower) {
+              _showAlertBanner(code, name, al.lower, current);
+              al.lower = null;
+              changed = true;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // 日付アラートチェック
+    if (al.dateAlerts && al.dateAlerts.length > 0) {
+      const remaining = [];
+      for (const da of al.dateAlerts) {
+        const alertDate = new Date(da.date);
+        alertDate.setHours(0, 0, 0, 0);
+        if (today >= alertDate) {
+          const m = alertDate.getMonth() + 1;
+          const d = alertDate.getDate();
+          _showDateAlertBanner(code, name, `${m}月${d}日`, da.memo);
+          changed = true;
+        } else {
+          remaining.push(da);
+        }
       }
-      if (al.lower != null && current <= al.lower) {
-        _showAlertBanner(code, name, al.lower, current);
-        al.lower = null;
-        fired = true;
-      }
-      if (fired) {
-        if (al.upper == null && al.lower == null) delete alertSettings[ticker];
-        saveAlerts();
-      }
-    } catch {}
+      al.dateAlerts = remaining;
+      if (al.dateAlerts.length === 0) delete al.dateAlerts;
+    }
+
+    // 全て空なら削除
+    if (al.upper == null && al.lower == null && (!al.dateAlerts || al.dateAlerts.length === 0)) {
+      delete alertSettings[ticker];
+      changed = true;
+    }
   }
+  if (changed) saveAlerts();
   renderWatchlist();
 }
 

@@ -507,6 +507,43 @@ header .badge-auto {
   font-size: 12px;
   color: var(--faint);
 }
+.wl-alert-sep {
+  border-top: 1px solid var(--border);
+  margin: 8px 0;
+}
+.wl-alert-date {
+  width: 140px;
+}
+.wl-alert-date-memo {
+  width: 100%;
+  flex: 1;
+}
+.wl-alert-datelist {
+  margin-bottom: 4px;
+}
+.wl-alert-dateitem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(255, 215, 0, 0.06);
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+.wl-alert-dateitem:last-child { margin-bottom: 0; }
+.wl-alert-daterm {
+  background: none;
+  border: none;
+  color: var(--faint);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.2s;
+}
+.wl-alert-daterm:hover { color: var(--red); }
 .wl-alert-error {
   font-size: 11px;
   color: var(--red);
@@ -567,6 +604,12 @@ header .badge-auto {
   transition: opacity 0.2s;
 }
 .alert-banner-close:hover { opacity: 1; }
+.alert-banner-date {
+  background: rgba(255, 215, 0, 0.12);
+  border-bottom-color: rgba(255, 215, 0, 0.3);
+  color: #FFD700;
+}
+.alert-banner-date .alert-banner-close { color: #FFD700; }
 
 .wl-alert-flash {
   animation: alertFlash 0.5s ease-in-out 6;
