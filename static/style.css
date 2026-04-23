@@ -386,8 +386,13 @@ header .badge-auto {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
   min-width: 0;
+}
+.wl-dup-lists {
+  font-size: 10px;
+  color: var(--faint);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .watchlist-remove {

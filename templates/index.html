@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=55">
+  <link rel="stylesheet" href="/static/style.css?v=56">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -667,6 +667,14 @@ function renderWatchlist() {
     removeBtn.onclick = () => toggleWatchlist(ticker, info.name);
     hdr.appendChild(link);
     hdr.appendChild(nameSpan);
+    // 他リストとの重複表示
+    const otherLists = wlLists.filter((l, i) => i !== wlActiveIdx && l.tickers.some(t => t.ticker === ticker));
+    if (otherLists.length > 0) {
+      const dup = document.createElement("span");
+      dup.className = "wl-dup-lists";
+      dup.textContent = otherLists.map(l => "📋" + l.name).join(" ");
+      hdr.appendChild(dup);
+    }
     hdr.appendChild(removeBtn);
     item.appendChild(hdr);
 
