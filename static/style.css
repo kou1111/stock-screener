@@ -438,6 +438,112 @@ header .badge-auto {
 .wl-memo-textarea::placeholder { color: var(--faint); }
 .wl-memo-textarea:focus { border-color: var(--accent); }
 
+/* ── アラート ─────────────────────────────────── */
+.wl-alert-wrap { position: relative; margin-bottom: 6px; }
+.wl-alert-row-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wl-alert-info {
+  font-size: 11px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  color: #FFD700;
+  white-space: nowrap;
+}
+.wl-alert-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--faint);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.wl-alert-toggle:hover { color: var(--text); border-color: var(--faint); }
+.wl-alert-toggle.active { color: #FFD700; border-color: rgba(255, 215, 0, 0.3); }
+.wl-alert-drop {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 50;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.wl-alert-drop.open { display: block; }
+.wl-alert-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.wl-alert-label {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 56px;
+}
+.wl-alert-input {
+  width: 100px;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  text-align: right;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.wl-alert-input:focus { border-color: var(--accent); }
+.wl-alert-unit {
+  font-size: 12px;
+  color: var(--faint);
+}
+.wl-alert-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.wl-alert-save {
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.2s;
+}
+.wl-alert-save:hover { filter: brightness(1.15); }
+.wl-alert-clear {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--faint);
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.wl-alert-clear:hover { color: var(--red); border-color: var(--red); }
+
+.wl-alert-flash {
+  animation: alertFlash 0.5s ease-in-out 6;
+}
+@keyframes alertFlash {
+  0%, 100% { border-color: var(--border); }
+  50% { border-color: #FFD700; box-shadow: 0 0 12px rgba(255, 215, 0, 0.3); }
+}
+
 /* ── 銘柄検索 ─────────────────────────────────── */
 .wl-search-wrap { position: relative; margin-bottom: 12px; }
 .wl-search-input {
