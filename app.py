@@ -838,10 +838,10 @@ def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
     try:
         resp = client.responses.create(
             model="o3",
-            reasoning={"effort": "high"},
+            reasoning={"effort": "medium"},
             tools=[{"type": "web_search_preview"}],
             input=prompt,
-            timeout=REASON_TIMEOUT * 3,
+            timeout=120,
         )
     except Exception as e:
         logging.error("理由調査 API呼び出しエラー: %s — %s", type(e).__name__, e)
