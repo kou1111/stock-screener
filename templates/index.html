@@ -1011,7 +1011,7 @@ const intradayThresholdInput = document.getElementById("intraday-threshold");
 let intradayPollTimer = null;
 let intradayJobId = null;
 let intradayCursor = 0;
-let intradaySeen = new Set();  // code で重複排除
+let intradayResults = new Map();  // code → result (重複排除+ソート用)
 
 {
   const saved = localStorage.getItem(INTRADAY_THRESHOLD_KEY);
@@ -1049,7 +1049,7 @@ async function fetchIntraday() {
   progText.textContent = "準備中...";
   result.style.display = "none";
   tbody.innerHTML = "";
-  intradaySeen = new Set();
+  intradayResults = new Map();
 
   try {
     const res = await fetch("/api/intraday/start", {
@@ -1112,14 +1112,11 @@ async function pollIntraday(jobId) {
     }
 
     if (d.new_results.length > 0) {
-      result.style.display = "block";
       for (const s of d.new_results) {
-        if (!intradaySeen.has(s.code)) {
-          intradaySeen.add(s.code);
-          appendIntradayRow(s);
-        }
+        if (!intradayResults.has(s.code)) intradayResults.set(s.code, s);
       }
       intradayCursor = d.cursor;
+      _resortIntradayResults();
     }
 
     if (d.status === "done") {
@@ -1128,25 +1125,11 @@ async function pollIntraday(jobId) {
       progText.textContent = `完了 — ${d.total.toLocaleString()} 銘柄処理 / ${d.hits} 件検知`;
       btn.disabled = false;
       btn.textContent = "当日変動銘柄を取得";
-      if (d.hits === 0) {
+      if (intradayResults.size === 0) {
         status.innerHTML = `<span class="dot"></span> ±${threshold}%以上の変動銘柄はありません`;
       } else {
-        status.innerHTML = `<span class="dot ok"></span> ${d.hits}件の大幅変動銘柄`;
-        // done時に全結果をソート済みで再描画
-        const tbody = document.getElementById("intraday-tbody");
-        tbody.innerHTML = "";
-        const allRes = await fetch(`/api/intraday/poll/${jobId}?cursor=0`);
-        const allData = await allRes.json();
-        if (allData.ok) {
-          result.style.display = "block";
-          // code で重複排除してソート
-          const dedup = new Map();
-          for (const s of allData.new_results) {
-            if (!dedup.has(s.code)) dedup.set(s.code, s);
-          }
-          const sorted = [...dedup.values()].sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
-          for (const s of sorted) appendIntradayRow(s);
-        }
+        status.innerHTML = `<span class="dot ok"></span> ${intradayResults.size}件の大幅変動銘柄`;
+        _resortIntradayResults();
       }
     } else if (d.status === "error") {
       stopIntradayPolling();
@@ -1158,6 +1141,14 @@ async function pollIntraday(jobId) {
   } catch (e) {
     // ネットワークエラーは無視して次回リトライ
   }
+}
+
+function _resortIntradayResults() {
+  const sorted = [...intradayResults.values()].sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  const tbody = document.getElementById("intraday-tbody");
+  tbody.innerHTML = "";
+  for (const s of sorted) appendIntradayRow(s);
+  document.getElementById("intraday-result").style.display = "block";
 }
 
 function appendIntradayRow(s) {
