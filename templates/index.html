@@ -286,7 +286,7 @@ function loadWatchlist() {
   try {
     const saved = JSON.parse(localStorage.getItem(WATCHLIST_KEY));
     if (Array.isArray(saved)) {
-      for (const item of saved) watchlist.set(item.ticker, {name: item.name, turnover: item.turnover || null, market_cap: item.market_cap || null, spark: item.spark || null});
+      for (const item of saved) watchlist.set(item.ticker, {name: item.name, turnover: item.turnover || null, market_cap: item.market_cap || null, spark: item.spark || null, market: item.market || null});
     }
   } catch {}
   try { watchlistMemos = JSON.parse(localStorage.getItem(MEMO_KEY)) || {}; } catch { watchlistMemos = {}; }
@@ -295,7 +295,7 @@ function loadWatchlist() {
 
 function saveWatchlist() {
   const arr = [];
-  for (const [ticker, info] of watchlist) arr.push({ticker, name: info.name, turnover: info.turnover, market_cap: info.market_cap, spark: info.spark});
+  for (const [ticker, info] of watchlist) arr.push({ticker, name: info.name, turnover: info.turnover, market_cap: info.market_cap, spark: info.spark, market: info.market});
   localStorage.setItem(WATCHLIST_KEY, JSON.stringify(arr));
 }
 
