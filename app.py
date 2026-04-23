@@ -190,6 +190,8 @@ def fetch_jpx_tickers() -> list[str]:
     )
 
     # 全銘柄の日本語名・市場をキャッシュ（PTS等で他市場の銘柄名も必要なため）
+    sample_markets = df["market"].dropna().unique()[:10].tolist()
+    logging.info("JPX市場区分カラムのサンプル値: %s", sample_markets)
     for _, row in df.iterrows():
         code = str(row["code"]).strip()
         if code:
@@ -202,6 +204,10 @@ def fetch_jpx_tickers() -> list[str]:
                 _jpx_markets[ticker] = "スタンダード"
             elif "グロース" in mkt:
                 _jpx_markets[ticker] = "グロース"
+
+    from collections import Counter
+    mkt_counts = Counter(_jpx_markets.values())
+    logging.info("JPX市場区分キャッシュ: %s (合計 %d銘柄)", dict(mkt_counts), len(_jpx_markets))
 
     # スクリーニング対象はプライム市場のみ
     tickers = []
