@@ -400,11 +400,6 @@ function renderWatchlist() {
     chgSpan.textContent = change != null ? (change >= 0 ? "+" : "") + change.toFixed(2) + "%" : "-";
     stats.appendChild(chgSpan);
 
-    const toSpan = document.createElement("span");
-    toSpan.className = "wl-meta";
-    toSpan.textContent = info.turnover != null ? "売買代金" + info.turnover.toLocaleString("ja-JP") + "億" : "-";
-    stats.appendChild(toSpan);
-
     const mcSpan = document.createElement("span");
     mcSpan.className = "wl-meta";
     mcSpan.textContent = info.market_cap ? "時価総額" + formatMarketCap(info.market_cap) : "-";
