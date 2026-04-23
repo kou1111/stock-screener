@@ -948,6 +948,10 @@ header .badge-auto {
   white-space: nowrap;
   vertical-align: baseline;
 }
+.rc-date-hl {
+  color: #FFD700;
+  font-weight: 600;
+}
 .rc-fallback {
   white-space: pre-wrap;
   font-size: 13px;

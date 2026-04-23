@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=37">
+  <link rel="stylesheet" href="/static/style.css?v=38">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -1314,6 +1314,26 @@ function formatReasonHtml(text) {
       return html.replace(/【(本日|時期不明|\d+営業日前|\d+日前|\d+週間前|\d+ヶ月前|\d+ヶ月以上前)】/g,
         '<span class="rc-date-badge">$1</span>');
     }
+    function highlightDates(html) {
+      const patterns = [
+        /(\d{4}年\d{1,2}月\d{1,2}日)/g,
+        /(\d{4}年\d{1,2}月)/g,
+        /(\d{1,2}月\d{1,2}日)/g,
+        /(\d{1,2}月(?:中|上旬|下旬|末))/g,
+        /(\d+ヶ月間?|\d+年間|\d+週間|\d+営業日|\d+日間)/g,
+        /(第[1-4１-４一二三四]四半期|通期|中間期|上半期|下半期|半期)/g,
+        /(今期|来期|前期|今月|来月|先月|今週|来週|先週|翌日|翌月|翌週|翌年|前日|前月|前週|昨年|本日|当日)/g,
+        /(期限|締め切り|締切)/g,
+        /([^\d]\d{1,2}月(?=[^日\d]))/g,
+      ];
+      for (const re of patterns) {
+        html = html.replace(re, (m, p1) => {
+          if (m.includes('rc-date-hl')) return m;
+          return m.replace(p1, `<span class="rc-date-hl">${p1}</span>`);
+        });
+      }
+      return html;
+    }
     return body.split("\n").map(line => {
       line = line.trim();
       if (!line) return "";
@@ -1322,9 +1342,9 @@ function formatReasonHtml(text) {
         return `<p class="rc-no-material">${escaped}</p>`;
       }
       if (/^[・\-\*•]/.test(line)) {
-        return `<li><span>${addDateBadge(escaped.replace(/^[・\-\*•]\s*/, ""))}</span></li>`;
+        return `<li><span>${highlightDates(addDateBadge(escaped.replace(/^[・\-\*•]\s*/, "")))}</span></li>`;
       }
-      return `<p>${addDateBadge(escaped)}</p>`;
+      return `<p>${highlightDates(addDateBadge(escaped))}</p>`;
     }).join("");
   }
 
