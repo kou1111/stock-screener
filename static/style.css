@@ -295,15 +295,15 @@ header .badge-auto {
 .watchlist-body {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 4px;
 }
 
 .watchlist-item {
   width: 350px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px 16px 10px;
+  border-radius: 8px;
+  padding: 8px 10px 6px;
   font-size: 13px;
   display: flex;
   flex-direction: column;
