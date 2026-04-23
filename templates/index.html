@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=58">
+  <link rel="stylesheet" href="/static/style.css?v=59">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -661,15 +661,15 @@ function renderWatchlist() {
     /* ── 上段: コード・銘柄名・×ボタン ── */
     const hdr = document.createElement("div");
     hdr.className = "wl-header";
-    if (info.market) {
-      const badge = document.createElement("span");
-      badge.innerHTML = marketBadge(info.market);
-      hdr.appendChild(badge);
-    }
+    const codeWrap = document.createElement("span");
+    codeWrap.className = "wl-code-wrap";
+    codeWrap.innerHTML = marketBadge(info.market);
     const link = document.createElement("a");
     link.className = "ticker-link";
     link.textContent = code;
     link.onclick = () => showChart(ticker, info.name);
+    codeWrap.appendChild(link);
+    hdr.appendChild(codeWrap);
     const nameSpan = document.createElement("span");
     nameSpan.className = "watchlist-name";
     nameSpan.textContent = info.name;
@@ -707,12 +707,9 @@ function renderWatchlist() {
             if (d.market_cap) inf.market_cap = d.market_cap;
             if (d.market && !inf.market) {
               inf.market = d.market;
-              const hdrEl = item.querySelector(".wl-header");
-              if (hdrEl && !hdrEl.querySelector(".mkt-badge")) {
-                const b = document.createElement("span");
-                b.innerHTML = marketBadge(d.market);
-                hdrEl.insertBefore(b, hdrEl.firstChild);
-              }
+              const cw = item.querySelector(".wl-code-wrap");
+              const oldBadge = cw && cw.querySelector(".mkt-badge");
+              if (oldBadge) oldBadge.outerHTML = marketBadge(d.market);
             }
             if (d.earnings_date) {
               inf.earnings_date = d.earnings_date;
