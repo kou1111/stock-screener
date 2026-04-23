@@ -248,6 +248,7 @@ const MAX_AUTO_RETRY = 3;
 let activeTab = 1;
 let enabledDays = [1, 2, 3, 4, 5];
 let tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+let screenResults = [];  // スクリーニング結果を蓄積（done時にソート用）
 
 /* ── 注目銘柄 (watchlist) ────────────────────────── */
 const WATCHLIST_KEY = "stock_screener_watchlist";
@@ -510,6 +511,7 @@ function resetResults() {
     document.getElementById(`result-tbody-${d}`).innerHTML = "";
   }
   tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+  screenResults = [];
   updateTabCounts();
 }
 
@@ -733,6 +735,13 @@ async function pollProgress(jobId) {
       progressText.textContent =
         `完了 — ${d.processed.toLocaleString()} 銘柄処理 / ${totalHits} 件検知`;
       setStatus(`<span class="dot ok"></span> スクリーニング完了: ${totalHits} 件検知`);
+      // 変動率の絶対値が大きい順にソートして再描画
+      screenResults.sort((a, b) => Math.abs(b.cum_change) - Math.abs(a.cum_change));
+      for (const day of enabledDays) {
+        document.getElementById(`result-tbody-${day}`).innerHTML = "";
+      }
+      tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+      for (const r of screenResults) appendRow(r, true);
       updateTabCounts();
       resultCard.style.display = "block";
       for (const day of enabledDays) {
@@ -771,11 +780,12 @@ async function pollProgress(jobId) {
 }
 
 /* ── 結果行の追加 ─────────────────────────────────── */
-function appendRow(r) {
+function appendRow(r, skipAccum) {
   const days = r.days;
   const tbody = document.getElementById(`result-tbody-${days}`);
   if (!tbody) return;
 
+  if (!skipAccum) screenResults.push(r);
   tabHits[days]++;
 
   const isStarred = watchlist.has(r.ticker);
@@ -913,6 +923,7 @@ async function fetchPts() {
     }
     status.innerHTML = `<span class="dot ok"></span> ${data.stocks.length}件の大幅変動銘柄`;
     result.style.display = "block";
+    data.stocks.sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
     for (const s of data.stocks) {
       appendPtsRow(s);
     }
@@ -1086,6 +1097,7 @@ async function pollIntraday(jobId) {
         const allData = await allRes.json();
         if (allData.ok) {
           result.style.display = "block";
+          allData.new_results.sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
           for (const s of allData.new_results) appendIntradayRow(s);
         }
       }
