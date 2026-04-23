@@ -1336,7 +1336,7 @@ function formatReasonHtml(text) {
     return `<div class="rc-fallback">${escaped}</div>`;
   }
 
-  function bodyToHtml(body) {
+  function bodyToHtml(body, cls) {
     function addDateBadge(html) {
       return html.replace(/【(本日|時期不明|\d+営業日前|\d+日前|\d+週間前|\d+ヶ月前|\d+ヶ月以上前)】/g,
         '<span class="rc-date-badge">$1</span>');
@@ -1361,6 +1361,8 @@ function formatReasonHtml(text) {
       }
       return html;
     }
+    const useHighlight = cls !== "rc-reason";
+    const hl = useHighlight ? highlightDates : (x) => x;
     return body.split("\n").map(line => {
       line = line.trim();
       if (!line) return "";
@@ -1369,15 +1371,15 @@ function formatReasonHtml(text) {
         return `<p class="rc-no-material">${escaped}</p>`;
       }
       if (/^[・\-\*•]/.test(line)) {
-        return `<li><span>${highlightDates(addDateBadge(escaped.replace(/^[・\-\*•]\s*/, "")))}</span></li>`;
+        return `<li><span>${hl(addDateBadge(escaped.replace(/^[・\-\*•]\s*/, "")))}</span></li>`;
       }
-      return `<p>${highlightDates(addDateBadge(escaped))}</p>`;
+      return `<p>${hl(addDateBadge(escaped))}</p>`;
     }).join("");
   }
 
   let html = "";
   for (const s of parsed) {
-    const inner = bodyToHtml(s.body);
+    const inner = bodyToHtml(s.body, s.cls);
     const hasList = inner.includes("<li>");
     const wrap = hasList ? `<ul>${inner}</ul>` : inner;
     html += `<div class="rc-card ${s.cls}"><div class="rc-head"><span class="rc-icon">${s.icon}</span><span class="rc-title">${s.key}</span></div><div class="rc-body">${wrap}</div></div>`;
