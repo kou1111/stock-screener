@@ -21,6 +21,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+input[type="number"] { min-height: 40px; }
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 1;
+  width: 30px;
+  height: 40px;
+  cursor: pointer;
+}
+
 /* ── レイアウト ────────────────────────────────── */
 .container {
   max-width: 100%;
