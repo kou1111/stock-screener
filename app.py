@@ -761,8 +761,8 @@ def _run_intraday(job_id: str, threshold: float):
 
 
 # ── 変動理由調査 ─────────────────────────────────────
-def investigate_reason(code: str, name: str) -> str:
-    """OpenAI gpt-4o-search-preview で銘柄の変動理由を調査"""
+def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
+    """2段階で銘柄の変動理由を調査: ①gpt-4o-search-previewで情報収集 → ②o3で分析"""
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY が設定されていません")
@@ -772,51 +772,65 @@ def investigate_reason(code: str, name: str) -> str:
 
     today = datetime.now().strftime("%Y年%m月%d日")
 
-    prompt = (
-        f"あなたは日本株アナリストです。\n"
-        f"銘柄コード: {code}\n"
-        f"銘柄名: {name}\n"
-        f"本日の日付: {today}\n\n"
-        f"以下のキーワードでWeb検索を行い、この銘柄の株価変動理由を調査してください：\n"
-        f"・「{name} 株価 理由 {today}」\n"
-        f"・「{code} 決算 IR」\n"
-        f"・「{name} ニュース」\n\n"
-        f"調査対象：\n"
-        f"1. 今日・昨日のニュース\n"
-        f"2. 適時開示（決算・IR情報）\n"
-        f"3. アナリストレポート\n"
-        f"4. 市場全体の動き（日経平均・セクター動向）\n\n"
-        f"重要ルール：\n"
-        f"・各材料がいつ発表・報道されたかをWeb検索で必ず確認すること\n"
-        f"・本日出た材料か、過去の材料かを正確に区別すること\n"
-        f"・日付が特定できない場合は「時期不明」と明記すること\n"
-        f"・Web検索で調べた結果、明確な材料（決算・IR・ニュース等）が見つからない場合は、【変動の主な理由】の最初の行に「⚠️ 本日時点で明確な材料は確認できませんでした。」と書き、その後に考えられる背景要因（セクター全体の動き・市場環境・テクニカル的な動きなど）を続けること。明確な材料がある場合はこの一文は不要。\n\n"
-        f"以下の形式で日本語で回答してください：\n\n"
+    # ── ステップ① gpt-4o-search-preview で情報収集 ──
+    if job_id:
+        _update_job(job_id, step="step1")
+    logging.info("理由調査 ステップ①開始: %s (%s)", code, name)
+
+    search_prompt = (
+        f"{name} 株価 {today} ニュース 決算 適時開示\n\n"
+        f"上記キーワードに関連する最新の情報をできるだけ詳しく取得してください。"
+        f"銘柄コードは {code} です。"
+        f"検索結果のテキストをそのまま出力してください。"
+    )
+
+    try:
+        search_resp = client.chat.completions.create(
+            model="gpt-4o-search-preview",
+            messages=[{"role": "user", "content": search_prompt}],
+            timeout=REASON_TIMEOUT,
+        )
+    except Exception as e:
+        logging.error("ステップ① API呼び出しエラー: %s — %s", type(e).__name__, e)
+        raise
+
+    search_result = search_resp.choices[0].message.content if search_resp.choices else ""
+    logging.info("理由調査 ステップ①完了: %s (%d文字)", code, len(search_result))
+
+    if not search_result.strip():
+        search_result = "（検索結果なし）"
+
+    # ── ステップ② o3 で深く分析 ──
+    if job_id:
+        _update_job(job_id, step="step2")
+    logging.info("理由調査 ステップ②開始: %s (%s)", code, name)
+
+    analysis_prompt = (
+        f"以下は{name}（{code}）の本日{today}時点のニュース・開示情報です。\n\n"
+        f"{search_result}\n\n"
+        f"これを踏まえて以下を日本語で分析してください：\n\n"
         f"【変動の主な理由】\n"
-        f"・【本日】〇〇〇〇（本日発表・報道された材料）\n"
-        f"・【1営業日前】〇〇〇〇\n"
-        f"・【3営業日前】〇〇〇〇\n"
-        f"・【1ヶ月以上前】〇〇〇〇（構造的な背景など）\n"
-        f"※各理由の先頭に【本日】【N営業日前】【N日前】【N週間前】【Nヶ月前】【1ヶ月以上前】【時期不明】のいずれかを必ず付けること\n\n"
+        f"・本日出た材料か、何営業日前の材料かを明記すること\n"
+        f"・各理由の先頭に【本日】【N営業日前】【N日前】【N週間前】【Nヶ月前】【1ヶ月以上前】【時期不明】のいずれかを必ず付けること\n"
+        f"・明確な材料（決算・IR・ニュース等）がない場合は最初の行に「⚠️ 本日時点で明確な材料は確認できませんでした。」と書き、その後に考えられる背景要因を続けること\n\n"
         f"【背景にある構造的な要因】\n"
         f"業界動向や中長期的な要因を記載\n\n"
         f"【今後の注目材料】\n"
         f"今後のイベントや注目ポイントを記載"
     )
 
-    logging.info("理由調査開始: %s (%s)", code, name)
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-search-preview",
-            messages=[{"role": "user", "content": prompt}],
-            timeout=REASON_TIMEOUT,
+        analysis_resp = client.chat.completions.create(
+            model="o3",
+            messages=[{"role": "user", "content": analysis_prompt}],
+            timeout=REASON_TIMEOUT * 2,
         )
     except Exception as e:
-        logging.error("OpenAI API呼び出しエラー: %s — %s", type(e).__name__, e)
+        logging.error("ステップ② API呼び出しエラー: %s — %s", type(e).__name__, e)
         raise
 
-    result = response.choices[0].message.content if response.choices else "理由を特定できませんでした。"
-    logging.info("理由調査完了: %s (%d文字)", code, len(result))
+    result = analysis_resp.choices[0].message.content if analysis_resp.choices else "理由を特定できませんでした。"
+    logging.info("理由調査 ステップ②完了: %s (%d文字)", code, len(result))
     return result
 
 
@@ -997,7 +1011,7 @@ def api_reason_start(code):
 
         def _run():
             try:
-                reason = investigate_reason(code, name)
+                reason = investigate_reason(code, name, job_id=job_id)
                 _update_job(job_id, status="done", message=reason)
             except Exception as e:
                 logging.exception("理由調査エラー: %s", code)
@@ -1022,6 +1036,7 @@ def api_reason_poll(job_id):
             "ok": True,
             "status": job["status"],
             "message": job.get("message", ""),
+            "step": job.get("step", ""),
         })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})

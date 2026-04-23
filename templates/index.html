@@ -1239,7 +1239,7 @@ function toggleReasonPanel() {
 
 async function investigateReason(btn, code, name) {
   const body = document.getElementById("rp-body");
-  body.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span><p style="margin-top:12px;color:var(--muted)">AIがWeb検索で調査中...</p></div>';
+  body.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span><p id="rp-step" style="margin-top:12px;color:var(--muted)">① 情報収集中...</p></div>';
   _rpHasContent = true;
   openReasonPanel(code, name);
 
@@ -1271,6 +1271,14 @@ async function investigateReason(btn, code, name) {
       const d = await pollRes.json();
       if (!d.ok) { throw new Error(d.error); }
       if (_reasonJobId !== myJobId) break;
+      // ステップ表示を更新
+      if (d.step) {
+        const stepEl = document.getElementById("rp-step");
+        if (stepEl) {
+          if (d.step === "step1") stepEl.textContent = "① 情報収集中...";
+          else if (d.step === "step2") stepEl.textContent = "② o3で分析中...";
+        }
+      }
       if (d.status === "done") {
         body.innerHTML = formatReasonHtml(d.message);
         break;
