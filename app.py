@@ -661,11 +661,13 @@ def fetch_pts_stocks(threshold: float = PTS_THRESHOLD) -> list[dict]:
                     vol = 0
                 if vol <= MIN_VOLUME:
                     continue
-                # 時価総額
+                # 時価総額 (70億円未満は除外)
                 try:
                     mcap = tk_obj.fast_info.get("marketCap", 0) or 0 if tk_obj else 0
                 except Exception:
                     mcap = 0
+                if mcap < MIN_MARKET_CAP:
+                    continue
                 # スパークライン
                 spark = _spark_ohlc(hist) if hist is not None and not hist.empty else []
                 # JPXキャッシュから日本語銘柄名を取得
