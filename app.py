@@ -811,10 +811,15 @@ def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
     logging.info("理由調査 ステップ①開始: %s (%s)", code, name)
 
     search_prompt = (
-        f"{name} 株価 {today} ニュース 決算 適時開示\n\n"
-        f"上記キーワードに関連する最新の情報をできるだけ詳しく取得してください。"
-        f"銘柄コードは {code} です。"
-        f"検索結果のテキストをそのまま出力してください。"
+        f"{name}（{code}）の株価が本日{today}に大きく動いた理由を調べてください。\n\n"
+        f"以下の順番で具体的に検索してください：\n"
+        f"1. 「{name} {today} 適時開示」\n"
+        f"2. 「{name} {today} ニュース 発表」\n"
+        f"3. 「{name} 引け後 {today}」\n"
+        f"4. 「{name} 決算 業績修正 {today}」\n"
+        f"5. 「{name} 提携 買収 {today}」\n\n"
+        f"特に引け後・本日発表の情報を優先して探してください。\n"
+        f"見つかった情報を全て列挙してください。"
     )
 
     try:
