@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=44">
+  <link rel="stylesheet" href="/static/style.css?v=45">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -334,6 +334,8 @@ function _sparkPrice(spark) {
   return {price, change, diff};
 }
 
+let _dragTicker = null;
+
 function renderWatchlist() {
   const card = document.getElementById("watchlist-card");
   const body = document.getElementById("watchlist-body");
@@ -353,6 +355,42 @@ function renderWatchlist() {
     const item = document.createElement("div");
     item.className = "watchlist-item";
     item.dataset.ticker = ticker;
+    item.draggable = true;
+
+    item.addEventListener("dragstart", (e) => {
+      _dragTicker = ticker;
+      item.classList.add("wl-dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    item.addEventListener("dragend", () => {
+      _dragTicker = null;
+      item.classList.remove("wl-dragging");
+      body.querySelectorAll(".wl-drag-over").forEach(el => el.classList.remove("wl-drag-over"));
+    });
+    item.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (_dragTicker && _dragTicker !== ticker) item.classList.add("wl-drag-over");
+    });
+    item.addEventListener("dragleave", () => {
+      item.classList.remove("wl-drag-over");
+    });
+    item.addEventListener("drop", (e) => {
+      e.preventDefault();
+      item.classList.remove("wl-drag-over");
+      if (!_dragTicker || _dragTicker === ticker) return;
+      // Reorder watchlist Map
+      const entries = [...watchlist.entries()];
+      const fromIdx = entries.findIndex(([t]) => t === _dragTicker);
+      const toIdx = entries.findIndex(([t]) => t === ticker);
+      if (fromIdx === -1 || toIdx === -1) return;
+      const [moved] = entries.splice(fromIdx, 1);
+      entries.splice(toIdx, 0, moved);
+      watchlist.clear();
+      for (const [t, v] of entries) watchlist.set(t, v);
+      saveWatchlist();
+      renderWatchlist();
+    });
 
     /* ── 上段: コード・銘柄名・×ボタン ── */
     const hdr = document.createElement("div");

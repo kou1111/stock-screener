@@ -310,6 +310,9 @@ header .badge-auto {
   transition: border-color 0.2s;
 }
 .watchlist-item:hover { border-color: #3c3c3e; }
+.watchlist-item[draggable="true"] { cursor: grab; }
+.watchlist-item.wl-dragging { opacity: 0.4; cursor: grabbing; }
+.watchlist-item.wl-drag-over { border-color: #58a6ff; box-shadow: 0 0 8px rgba(88, 166, 255, 0.25); }
 
 .wl-header {
   display: flex;
