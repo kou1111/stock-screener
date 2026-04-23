@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=31">
+  <link rel="stylesheet" href="/static/style.css?v=32">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -222,6 +222,7 @@
     <div class="rp-title" id="rp-title"></div>
     <button class="rp-close" onclick="closeReasonPanel()">&times;</button>
   </div>
+  <div class="rp-history-tabs" id="rp-history-tabs"></div>
   <div class="rp-body" id="rp-body"></div>
 </div>
 <button id="rp-tab" class="rp-tab" onclick="toggleReasonPanel()">&#x25B6;</button>
@@ -1220,42 +1221,116 @@ function formatReasonHtml(text) {
   return html;
 }
 
-/* ── 理由調査サイドパネル ─────────────────────────── */
-let _reasonJobId = null;   // 現在調査中のジョブID (キャンセル検知用)
-let _rpHasContent = false; // パネルに結果があるか
+/* ── 理由調査サイドパネル（履歴付き） ────────────── */
+const REASON_HISTORY_KEY = "stock_screener_reason_history";
+const REASON_MAX_HISTORY = 10;
+let _reasonJobId = null;
+let _reasonHistory = [];   // [{code, name, html, timestamp}, ...]
+let _reasonActiveCode = null;
+
+function _loadReasonHistory() {
+  try {
+    const raw = localStorage.getItem(REASON_HISTORY_KEY);
+    _reasonHistory = raw ? JSON.parse(raw) : [];
+  } catch { _reasonHistory = []; }
+}
+function _saveReasonHistory() {
+  localStorage.setItem(REASON_HISTORY_KEY, JSON.stringify(_reasonHistory));
+}
 
 function _rpIsOpen() { return document.getElementById("reason-panel").classList.contains("open"); }
 
-function _rpUpdateTab(isOpen) {
+function _rpUpdateToggle(isOpen) {
   const tab = document.getElementById("rp-tab");
   tab.classList.toggle("open", isOpen);
   tab.innerHTML = isOpen ? "&#x25C0;" : "&#x25B6;";
-  if (_rpHasContent) tab.classList.add("visible");
+  if (_reasonHistory.length > 0) tab.classList.add("visible");
+}
+
+function _renderHistoryTabs() {
+  const container = document.getElementById("rp-history-tabs");
+  if (_reasonHistory.length === 0) { container.innerHTML = ""; return; }
+  let html = "";
+  for (const h of _reasonHistory) {
+    const active = h.code === _reasonActiveCode ? " active" : "";
+    html += `<button class="rp-htab${active}" data-code="${h.code}" onclick="switchReasonTab('${h.code}')">`
+          + `<span class="rp-htab-label">${h.code}</span>`
+          + `<span class="rp-htab-x" onclick="event.stopPropagation();removeReasonTab('${h.code}')">&times;</span>`
+          + `</button>`;
+  }
+  container.innerHTML = html;
+  // アクティブタブが見えるようにスクロール
+  const activeEl = container.querySelector(".rp-htab.active");
+  if (activeEl) activeEl.scrollIntoView({behavior: "smooth", block: "nearest", inline: "nearest"});
+}
+
+function switchReasonTab(code) {
+  const entry = _reasonHistory.find(h => h.code === code);
+  if (!entry) return;
+  _reasonActiveCode = code;
+  document.getElementById("rp-title").textContent = `${entry.code}  ${entry.name}`;
+  document.getElementById("rp-body").innerHTML = entry.html;
+  _renderHistoryTabs();
+}
+
+function removeReasonTab(code) {
+  _reasonHistory = _reasonHistory.filter(h => h.code !== code);
+  _saveReasonHistory();
+  if (_reasonHistory.length === 0) {
+    _reasonActiveCode = null;
+    document.getElementById("rp-body").innerHTML = "";
+    document.getElementById("rp-title").textContent = "";
+    document.getElementById("rp-tab").classList.remove("visible");
+    closeReasonPanel();
+  } else if (_reasonActiveCode === code) {
+    switchReasonTab(_reasonHistory[0].code);
+  }
+  _renderHistoryTabs();
+}
+
+function _addToHistory(code, name, html) {
+  _reasonHistory = _reasonHistory.filter(h => h.code !== code);
+  _reasonHistory.unshift({code, name, html, timestamp: Date.now()});
+  if (_reasonHistory.length > REASON_MAX_HISTORY) _reasonHistory.pop();
+  _reasonActiveCode = code;
+  _saveReasonHistory();
+  _renderHistoryTabs();
 }
 
 function openReasonPanel(code, name) {
   document.getElementById("rp-title").textContent = `${code}  ${name}`;
   document.getElementById("reason-panel").classList.add("open");
-  _rpUpdateTab(true);
+  _reasonActiveCode = code;
+  _renderHistoryTabs();
+  _rpUpdateToggle(true);
 }
 
 function closeReasonPanel() {
   document.getElementById("reason-panel").classList.remove("open");
-  _rpUpdateTab(false);
+  _rpUpdateToggle(false);
 }
 
 function toggleReasonPanel() {
   if (_rpIsOpen()) { closeReasonPanel(); }
-  else if (_rpHasContent) { document.getElementById("reason-panel").classList.add("open"); _rpUpdateTab(true); }
+  else if (_reasonHistory.length > 0) {
+    document.getElementById("reason-panel").classList.add("open");
+    _rpUpdateToggle(true);
+  }
 }
 
 async function investigateReason(btn, code, name) {
   const body = document.getElementById("rp-body");
+  // 既に履歴にあればそれを表示
+  const existing = _reasonHistory.find(h => h.code === code);
+  if (existing) {
+    openReasonPanel(code, name);
+    switchReasonTab(code);
+    return;
+  }
+
   body.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span><p id="rp-step" style="margin-top:12px;color:var(--muted)">① 情報収集中...</p></div>';
-  _rpHasContent = true;
   openReasonPanel(code, name);
 
-  // 新しいジョブIDを発行して古い調査のポーリングを無効化
   let myJobId;
   try {
     const startRes = await fetch(`/api/reason/start/${code}`, {
@@ -1273,7 +1348,6 @@ async function investigateReason(btn, code, name) {
     return;
   }
 
-  // ポーリング (途中で別の銘柄が開始されたら中断)
   while (_reasonJobId === myJobId) {
     await new Promise(r => setTimeout(r, 2000));
     if (_reasonJobId !== myJobId) break;
@@ -1283,7 +1357,6 @@ async function investigateReason(btn, code, name) {
       const d = await pollRes.json();
       if (!d.ok) { throw new Error(d.error); }
       if (_reasonJobId !== myJobId) break;
-      // ステップ表示を更新
       if (d.step) {
         const stepEl = document.getElementById("rp-step");
         if (stepEl) {
@@ -1292,7 +1365,9 @@ async function investigateReason(btn, code, name) {
         }
       }
       if (d.status === "done") {
-        body.innerHTML = formatReasonHtml(d.message);
+        const html = formatReasonHtml(d.message);
+        body.innerHTML = html;
+        _addToHistory(code, name, html);
         break;
       } else if (d.status === "error") {
         body.innerHTML = `<div class="rc-fallback" style="color:var(--red)">${d.message}</div>`;
@@ -1304,6 +1379,13 @@ async function investigateReason(btn, code, name) {
       break;
     }
   }
+}
+
+// ページ読み込み時に履歴を復元
+_loadReasonHistory();
+if (_reasonHistory.length > 0) {
+  document.getElementById("rp-tab").classList.add("visible");
+  _renderHistoryTabs();
 }
 </script>
 </body>

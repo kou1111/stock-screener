@@ -714,6 +714,53 @@ header .badge-auto {
 }
 .rp-close:hover { background: rgba(255, 255, 255, 0.12); color: var(--text); }
 
+.rp-history-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.rp-history-tabs::-webkit-scrollbar { display: none; }
+.rp-history-tabs:empty { display: none; }
+
+.rp-htab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.rp-htab:hover { background: rgba(255,255,255,0.06); }
+.rp-htab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.rp-htab-label { pointer-events: none; }
+.rp-htab-x {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.5;
+  cursor: pointer;
+  padding: 0 1px;
+  transition: opacity 0.15s;
+}
+.rp-htab-x:hover { opacity: 1; }
+.rp-htab.active .rp-htab-x { opacity: 0.7; }
+.rp-htab.active .rp-htab-x:hover { opacity: 1; }
+
 .rp-body {
   flex: 1;
   overflow-y: auto;
