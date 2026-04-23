@@ -358,9 +358,23 @@ header .badge-auto {
   transition: border-color 0.2s;
 }
 .watchlist-item:hover { border-color: #3c3c3e; }
-.watchlist-item[draggable="true"] { cursor: grab; }
-.watchlist-item.wl-dragging { opacity: 0.4; cursor: grabbing; }
-.watchlist-item.wl-drag-over { border-color: #58a6ff; box-shadow: 0 0 8px rgba(88, 166, 255, 0.25); }
+.watchlist-item { cursor: grab; }
+.watchlist-item.wl-dragging {
+  opacity: 0.9;
+  cursor: grabbing;
+  transform: scale(1.05);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+.wl-drag-placeholder {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.2s ease;
+}
+.wl-drop-land {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
 
 .wl-header {
   display: flex;

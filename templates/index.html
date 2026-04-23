@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=51">
+  <link rel="stylesheet" href="/static/style.css?v=52">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -475,7 +475,106 @@ function _sparkPrice(spark) {
   return {price, change, diff};
 }
 
-let _dragTicker = null;
+/* ── ドラッグ＆ドロップ (mouse events) ── */
+let _drag = null; // {el, ticker, placeholder, startX, startY, offsetX, offsetY, body, items}
+
+function _onDragMouseDown(e, item, ticker) {
+  // ボタン・input・textarea・リンクのクリックは無視
+  if (e.button !== 0) return;
+  const tag = e.target.tagName;
+  if (tag === "BUTTON" || tag === "INPUT" || tag === "TEXTAREA" || tag === "A" || tag === "SELECT") return;
+  if (e.target.closest("button, input, textarea, a, select, .wl-alert-drop, .wl-memo-drop")) return;
+
+  const rect = item.getBoundingClientRect();
+  _drag = {
+    el: item, ticker,
+    startX: e.clientX, startY: e.clientY,
+    offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top,
+    body: document.getElementById("watchlist-body"),
+    started: false, placeholder: null
+  };
+  document.addEventListener("mousemove", _onDragMouseMove);
+  document.addEventListener("mouseup", _onDragMouseUp);
+  e.preventDefault();
+}
+
+function _onDragMouseMove(e) {
+  if (!_drag) return;
+  const dx = e.clientX - _drag.startX, dy = e.clientY - _drag.startY;
+  // 5pxの遊びでドラッグ開始判定
+  if (!_drag.started) {
+    if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+    _drag.started = true;
+    const rect = _drag.el.getBoundingClientRect();
+    // プレースホルダー
+    const ph = document.createElement("div");
+    ph.className = "wl-drag-placeholder";
+    ph.style.width = rect.width + "px";
+    ph.style.height = rect.height + "px";
+    _drag.el.parentNode.insertBefore(ph, _drag.el);
+    _drag.placeholder = ph;
+    // カードを浮かす
+    _drag.el.classList.add("wl-dragging");
+    _drag.el.style.position = "fixed";
+    _drag.el.style.zIndex = "9999";
+    _drag.el.style.width = rect.width + "px";
+    _drag.el.style.left = (e.clientX - _drag.offsetX) + "px";
+    _drag.el.style.top = (e.clientY - _drag.offsetY) + "px";
+    _drag.el.style.pointerEvents = "none";
+  }
+  _drag.el.style.left = (e.clientX - _drag.offsetX) + "px";
+  _drag.el.style.top = (e.clientY - _drag.offsetY) + "px";
+  // 挿入位置の判定
+  const items = [..._drag.body.querySelectorAll(".watchlist-item:not(.wl-dragging)")];
+  let closest = null, closestDist = Infinity;
+  for (const it of items) {
+    const r = it.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const d = Math.hypot(e.clientX - cx, e.clientY - cy);
+    if (d < closestDist) { closestDist = d; closest = it; }
+  }
+  if (closest && _drag.placeholder) {
+    const r = closest.getBoundingClientRect();
+    const mid = r.top + r.height / 2;
+    if (e.clientY < mid) {
+      _drag.body.insertBefore(_drag.placeholder, closest);
+    } else {
+      _drag.body.insertBefore(_drag.placeholder, closest.nextSibling);
+    }
+  }
+}
+
+function _onDragMouseUp(e) {
+  document.removeEventListener("mousemove", _onDragMouseMove);
+  document.removeEventListener("mouseup", _onDragMouseUp);
+  if (!_drag) return;
+  if (!_drag.started) { _drag = null; return; }
+  // 着地アニメーション
+  const ph = _drag.placeholder;
+  const el = _drag.el;
+  if (ph) {
+    // プレースホルダーの位置にカードを挿入
+    _drag.body.insertBefore(el, ph);
+    ph.remove();
+  }
+  el.classList.remove("wl-dragging");
+  el.style.position = "";
+  el.style.zIndex = "";
+  el.style.width = "";
+  el.style.left = "";
+  el.style.top = "";
+  el.style.pointerEvents = "";
+  el.classList.add("wl-drop-land");
+  setTimeout(() => el.classList.remove("wl-drop-land"), 300);
+  // 新しい順番をMapに反映
+  const newOrder = [..._drag.body.querySelectorAll(".watchlist-item")].map(it => it.dataset.ticker);
+  const entries = [...watchlist.entries()];
+  const map = new Map(entries);
+  watchlist.clear();
+  for (const t of newOrder) { if (map.has(t)) watchlist.set(t, map.get(t)); }
+  saveWatchlist();
+  _drag = null;
+}
 
 function renderWatchlist() {
   const card = document.getElementById("watchlist-card");
@@ -496,42 +595,8 @@ function renderWatchlist() {
     const item = document.createElement("div");
     item.className = "watchlist-item";
     item.dataset.ticker = ticker;
-    item.draggable = true;
 
-    item.addEventListener("dragstart", (e) => {
-      _dragTicker = ticker;
-      item.classList.add("wl-dragging");
-      e.dataTransfer.effectAllowed = "move";
-    });
-    item.addEventListener("dragend", () => {
-      _dragTicker = null;
-      item.classList.remove("wl-dragging");
-      body.querySelectorAll(".wl-drag-over").forEach(el => el.classList.remove("wl-drag-over"));
-    });
-    item.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      if (_dragTicker && _dragTicker !== ticker) item.classList.add("wl-drag-over");
-    });
-    item.addEventListener("dragleave", () => {
-      item.classList.remove("wl-drag-over");
-    });
-    item.addEventListener("drop", (e) => {
-      e.preventDefault();
-      item.classList.remove("wl-drag-over");
-      if (!_dragTicker || _dragTicker === ticker) return;
-      // Reorder watchlist Map
-      const entries = [...watchlist.entries()];
-      const fromIdx = entries.findIndex(([t]) => t === _dragTicker);
-      const toIdx = entries.findIndex(([t]) => t === ticker);
-      if (fromIdx === -1 || toIdx === -1) return;
-      const [moved] = entries.splice(fromIdx, 1);
-      entries.splice(toIdx, 0, moved);
-      watchlist.clear();
-      for (const [t, v] of entries) watchlist.set(t, v);
-      saveWatchlist();
-      renderWatchlist();
-    });
+    item.addEventListener("mousedown", (e) => _onDragMouseDown(e, item, ticker));
 
     /* ── 上段: コード・銘柄名・×ボタン ── */
     const hdr = document.createElement("div");
