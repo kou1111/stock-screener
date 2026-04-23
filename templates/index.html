@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=56">
+  <link rel="stylesheet" href="/static/style.css?v=57">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -1327,11 +1327,10 @@ function formatMarketCap(val) {
 }
 
 function marketBadge(market) {
-  if (!market) return "";
-  if (market.includes("プライム"))   return '<span class="mkt-badge mkt-prime">プ</span>';
-  if (market.includes("スタンダード")) return '<span class="mkt-badge mkt-standard">ス</span>';
-  if (market.includes("グロース"))   return '<span class="mkt-badge mkt-growth">グ</span>';
-  return "";
+  if (market && market.includes("プライム"))   return '<span class="mkt-badge mkt-prime">プ</span>';
+  if (market && market.includes("スタンダード")) return '<span class="mkt-badge mkt-standard">ス</span>';
+  if (market && market.includes("グロース"))   return '<span class="mkt-badge mkt-growth">グ</span>';
+  return '<span class="mkt-badge mkt-empty"></span>';
 }
 
 /* sparkCandle: OHLC配列 [[o,h,l,c],...] → ミニローソク足 canvas

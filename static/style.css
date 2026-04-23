@@ -855,6 +855,7 @@ header .badge-auto {
 .mkt-prime    { background: rgba(10,132,255,0.2); color: #0a84ff; }
 .mkt-standard { background: rgba(142,142,147,0.2); color: #8e8e93; }
 .mkt-growth   { background: rgba(48,209,88,0.2); color: #30d158; }
+.mkt-empty    { visibility: hidden; }
 
 .price {
   font-family: 'SF Mono', 'Menlo', monospace;
