@@ -369,7 +369,7 @@ function renderWlTabs() {
     });
     bar.appendChild(tab);
   });
-  if (wlLists.length < 5) {
+  if (wlLists.length < 10) {
     const addBtn = document.createElement("button");
     addBtn.className = "wl-tab wl-tab-add";
     addBtn.textContent = "+";
@@ -391,7 +391,7 @@ function switchWlList(idx) {
 }
 
 function addWlList() {
-  if (wlLists.length >= 5) return;
+  if (wlLists.length >= 10) return;
   wlLists.push({id: wlNextId++, name: "リスト" + (wlLists.length + 1), tickers: []});
   saveWatchlist();
   wlActiveIdx = wlLists.length - 1;
