@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=38">
+  <link rel="stylesheet" href="/static/style.css?v=39">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -428,13 +428,40 @@ function renderWatchlist() {
     item.appendChild(stats);
 
     /* ── 最下段: メモ ── */
-    const memo = document.createElement("input");
-    memo.type = "text";
-    memo.className = "watchlist-memo";
-    memo.placeholder = "メモを入力...";
-    memo.value = watchlistMemos[ticker] || "";
-    memo.addEventListener("input", () => saveMemo(ticker, memo.value));
-    item.appendChild(memo);
+    const memoWrap = document.createElement("div");
+    memoWrap.className = "wl-memo-wrap";
+
+    const memoPreview = document.createElement("div");
+    memoPreview.className = "wl-memo-preview";
+    const memoText = watchlistMemos[ticker] || "";
+    memoPreview.textContent = memoText || "メモを入力...";
+    if (!memoText) memoPreview.classList.add("empty");
+    memoWrap.appendChild(memoPreview);
+
+    const memoDrop = document.createElement("div");
+    memoDrop.className = "wl-memo-drop";
+    const memoArea = document.createElement("textarea");
+    memoArea.className = "wl-memo-textarea";
+    memoArea.placeholder = "メモを入力...";
+    memoArea.value = memoText;
+    memoArea.rows = 3;
+    memoDrop.appendChild(memoArea);
+    memoWrap.appendChild(memoDrop);
+
+    memoPreview.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = memoDrop.classList.toggle("open");
+      if (isOpen) { memoArea.focus(); }
+    });
+    memoArea.addEventListener("input", () => {
+      saveMemo(ticker, memoArea.value);
+      memoPreview.textContent = memoArea.value || "メモを入力...";
+      memoPreview.classList.toggle("empty", !memoArea.value);
+    });
+    document.addEventListener("click", (e) => {
+      if (!memoWrap.contains(e.target)) memoDrop.classList.remove("open");
+    });
+    item.appendChild(memoWrap);
 
     body.appendChild(item);
   }
