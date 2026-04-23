@@ -249,7 +249,7 @@ const MAX_AUTO_RETRY = 3;
 let activeTab = 1;
 let enabledDays = [1, 2, 3, 4, 5];
 let tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-let screenResults = [];  // スクリーニング結果を蓄積（done時にソート用）
+let screenResults = new Map();  // key: "ticker:days" → result (重複排除)
 
 /* ── 注目銘柄 (watchlist) ────────────────────────── */
 const WATCHLIST_KEY = "stock_screener_watchlist";
@@ -512,7 +512,7 @@ function resetResults() {
     document.getElementById(`result-tbody-${d}`).innerHTML = "";
   }
   tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-  screenResults = [];
+  screenResults = new Map();
   updateTabCounts();
 }
 
@@ -720,7 +720,10 @@ async function pollProgress(jobId) {
     }
 
     if (d.new_results.length > 0) {
-      for (const r of d.new_results) screenResults.push(r);
+      for (const r of d.new_results) {
+        const key = `${r.ticker}:${r.days}`;
+        if (!screenResults.has(key)) screenResults.set(key, r);
+      }
       currentCursor = d.cursor;
       _resortScreenResults();
     }
@@ -773,23 +776,22 @@ async function pollProgress(jobId) {
 
 /* ── ソート済み再描画 ──────────────────────────────── */
 function _resortScreenResults() {
-  screenResults.sort((a, b) => Math.abs(b.cum_change) - Math.abs(a.cum_change));
+  const sorted = [...screenResults.values()].sort((a, b) => Math.abs(b.cum_change) - Math.abs(a.cum_change));
   for (const day of enabledDays) {
     document.getElementById(`result-tbody-${day}`).innerHTML = "";
   }
   tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-  for (const r of screenResults) appendRow(r, true);
+  for (const r of sorted) appendRow(r);
   updateTabCounts();
   resultCard.style.display = "block";
 }
 
 /* ── 結果行の追加 ─────────────────────────────────── */
-function appendRow(r, skipAccum) {
+function appendRow(r) {
   const days = r.days;
   const tbody = document.getElementById(`result-tbody-${days}`);
   if (!tbody) return;
 
-  if (!skipAccum) screenResults.push(r);
   tabHits[days]++;
 
   const isStarred = watchlist.has(r.ticker);
@@ -927,8 +929,15 @@ async function fetchPts() {
     }
     status.innerHTML = `<span class="dot ok"></span> ${data.stocks.length}件の大幅変動銘柄`;
     result.style.display = "block";
-    data.stocks.sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
-    for (const s of data.stocks) {
+    // code で重複排除してソート
+    const ptsSeen = new Set();
+    const ptsDeduped = data.stocks.filter(s => {
+      if (ptsSeen.has(s.code)) return false;
+      ptsSeen.add(s.code);
+      return true;
+    });
+    ptsDeduped.sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+    for (const s of ptsDeduped) {
       appendPtsRow(s);
     }
   } catch (e) {
@@ -981,6 +990,7 @@ const intradayThresholdInput = document.getElementById("intraday-threshold");
 let intradayPollTimer = null;
 let intradayJobId = null;
 let intradayCursor = 0;
+let intradaySeen = new Set();  // code で重複排除
 
 {
   const saved = localStorage.getItem(INTRADAY_THRESHOLD_KEY);
@@ -1017,6 +1027,7 @@ async function fetchIntraday() {
   progText.textContent = "準備中...";
   result.style.display = "none";
   tbody.innerHTML = "";
+  intradaySeen = new Set();
 
   try {
     const res = await fetch("/api/intraday/start", {
@@ -1080,7 +1091,12 @@ async function pollIntraday(jobId) {
 
     if (d.new_results.length > 0) {
       result.style.display = "block";
-      for (const s of d.new_results) appendIntradayRow(s);
+      for (const s of d.new_results) {
+        if (!intradaySeen.has(s.code)) {
+          intradaySeen.add(s.code);
+          appendIntradayRow(s);
+        }
+      }
       intradayCursor = d.cursor;
     }
 
@@ -1101,8 +1117,13 @@ async function pollIntraday(jobId) {
         const allData = await allRes.json();
         if (allData.ok) {
           result.style.display = "block";
-          allData.new_results.sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
-          for (const s of allData.new_results) appendIntradayRow(s);
+          // code で重複排除してソート
+          const dedup = new Map();
+          for (const s of allData.new_results) {
+            if (!dedup.has(s.code)) dedup.set(s.code, s);
+          }
+          const sorted = [...dedup.values()].sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+          for (const s of sorted) appendIntradayRow(s);
         }
       }
     } else if (d.status === "error") {

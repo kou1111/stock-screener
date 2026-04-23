@@ -176,9 +176,11 @@ def fetch_jpx_tickers() -> list[str]:
     ]
 
     total_rows = len(df)
+    df = df.drop_duplicates(subset=["code"], keep="first")
     stocks = df[~df["market"].str.contains("ETF|REIT|PRO", na=False)].copy()
     after_etf = len(stocks)
     stocks = stocks[stocks["market"].str.contains("プライム", na=False)]
+    stocks = stocks.drop_duplicates(subset=["code"], keep="first")
     after_prime = len(stocks)
 
     logging.info(
@@ -422,6 +424,17 @@ def _run_screening(job_id: str, settings: dict, resume_data: dict | None = None)
                 _save_progress(settings, tickers, processed_list, results_list)
 
     _delete_progress()
+
+    # 最終重複排除: (ticker, days) の組で一意にする
+    with _jobs_lock:
+        if job_id in _jobs_mem:
+            dedup = {}
+            for r in _jobs_mem[job_id]["results"]:
+                key = (r["ticker"], r["days"])
+                if key not in dedup:
+                    dedup[key] = r
+            _jobs_mem[job_id]["results"] = list(dedup.values())
+            _jobs_mem[job_id]["hits"] = len(dedup)
 
     job = _get_job(job_id)
     hits = job["hits"] if job else 0
@@ -748,11 +761,17 @@ def _run_intraday(job_id: str, threshold: float):
             if count % 20 == 0:
                 _flush_job(job_id)
 
-    # 結果を変動率の絶対値降順でソート
+    # 最終重複排除 + 変動率の絶対値降順でソート
     with _jobs_lock:
         if job_id in _jobs_mem:
-            _jobs_mem[job_id]["results"].sort(
-                key=lambda x: abs(x["change_pct"]), reverse=True)
+            dedup = {}
+            for r in _jobs_mem[job_id]["results"]:
+                if r["code"] not in dedup:
+                    dedup[r["code"]] = r
+            deduped = list(dedup.values())
+            deduped.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
+            _jobs_mem[job_id]["results"] = deduped
+            _jobs_mem[job_id]["hits"] = len(deduped)
 
     job = _get_job(job_id)
     hits = job["hits"] if job else 0
