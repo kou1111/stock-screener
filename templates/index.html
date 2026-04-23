@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=34">
+  <link rel="stylesheet" href="/static/style.css?v=35">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -52,15 +52,15 @@
         <thead>
           <tr>
             <th style="width:32px"></th>
-            <th>銘柄</th>
+            <th style="width:80px">銘柄</th>
             <th class="th-name">銘柄名</th>
             <th class="th-spark">20日</th>
-            <th>通常終値</th>
-            <th>PTS価格</th>
-            <th>前日比</th>
-            <th style="text-align:right">売買代金</th>
-            <th style="text-align:right">時価総額</th>
-            <th></th>
+            <th style="width:80px;text-align:right">通常終値</th>
+            <th style="width:80px;text-align:right">PTS価格</th>
+            <th style="width:72px;text-align:right">前日比</th>
+            <th style="width:80px;text-align:right">売買代金</th>
+            <th style="width:80px;text-align:right">時価総額</th>
+            <th style="width:100px"></th>
           </tr>
         </thead>
         <tbody id="pts-tbody"></tbody>
@@ -91,16 +91,16 @@
         <thead>
           <tr>
             <th style="width:32px"></th>
-            <th>銘柄</th>
+            <th style="width:80px">銘柄</th>
             <th class="th-name">銘柄名</th>
             <th class="th-spark">20日</th>
-            <th style="text-align:right">始値</th>
-            <th style="text-align:right">現在値</th>
-            <th style="text-align:right">変動率</th>
-            <th style="text-align:right">出来高</th>
-            <th style="text-align:right">売買代金</th>
-            <th style="text-align:right">時価総額</th>
-            <th></th>
+            <th style="width:80px;text-align:right">始値</th>
+            <th style="width:80px;text-align:right">現在値</th>
+            <th style="width:72px;text-align:right">変動率</th>
+            <th style="width:80px;text-align:right">出来高</th>
+            <th style="width:80px;text-align:right">売買代金</th>
+            <th style="width:80px;text-align:right">時価総額</th>
+            <th style="width:100px"></th>
           </tr>
         </thead>
         <tbody id="intraday-tbody"></tbody>
@@ -189,15 +189,15 @@
       <table class="result-table" id="result-table">
         <thead><tr>
           <th style="width:32px"></th>
-          <th>銘柄</th><th class="th-name">銘柄名</th>
+          <th style="width:80px">銘柄</th><th class="th-name">銘柄名</th>
           <th class="th-spark">20日</th>
-          <th id="ref-close-th" style="text-align:right">1日前終値</th>
-          <th style="text-align:right">現在値</th>
-          <th style="text-align:right">累積騰落率</th>
-          <th style="text-align:right">最大上髭</th>
-          <th style="text-align:right">売買代金</th>
-          <th style="text-align:right">時価総額</th>
-          <th></th>
+          <th id="ref-close-th" style="width:80px;text-align:right">1日前終値</th>
+          <th style="width:80px;text-align:right">現在値</th>
+          <th style="width:80px;text-align:right">累積騰落率</th>
+          <th style="width:72px;text-align:right">最大上髭</th>
+          <th style="width:80px;text-align:right">売買代金</th>
+          <th style="width:80px;text-align:right">時価総額</th>
+          <th style="width:100px"></th>
         </tr></thead>
         <tbody id="result-tbody-1"></tbody>
         <tbody id="result-tbody-2" class="hidden-tab"></tbody>

@@ -425,6 +425,7 @@ header .badge-auto {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  table-layout: fixed;
 }
 
 .result-table th {
