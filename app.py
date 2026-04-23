@@ -795,7 +795,7 @@ def _run_intraday(job_id: str, threshold: float):
 
 # ── 変動理由調査 ─────────────────────────────────────
 def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
-    """2段階で銘柄の変動理由を調査: ①gpt-4o-search-previewで情報収集 → ②o3で分析"""
+    """o3 + web_search_preview ツールで銘柄の変動理由を一括調査"""
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY が設定されていません")
@@ -805,72 +805,44 @@ def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
 
     today = datetime.now().strftime("%Y年%m月%d日")
 
-    # ── ステップ① gpt-4o-search-preview で情報収集 ──
     if job_id:
-        _update_job(job_id, step="step1")
-    logging.info("理由調査 ステップ①開始: %s (%s)", code, name)
+        _update_job(job_id, step="searching")
+    logging.info("理由調査開始 (o3+web_search): %s (%s)", code, name)
 
-    search_prompt = (
-        f"{name}（{code}）の株価が本日{today}に大きく動いた理由を調べてください。\n\n"
-        f"以下の順番で具体的に検索してください：\n"
-        f"1. 「{name} {today} 適時開示」\n"
-        f"2. 「{name} {today} ニュース 発表」\n"
-        f"3. 「{name} 引け後 {today}」\n"
-        f"4. 「{name} 決算 業績修正 {today}」\n"
-        f"5. 「{name} 提携 買収 {today}」\n\n"
-        f"特に引け後・本日発表の情報を優先して探してください。\n"
-        f"見つかった情報を全て列挙してください。"
-    )
-
-    try:
-        search_resp = client.chat.completions.create(
-            model="gpt-4o-search-preview",
-            messages=[{"role": "user", "content": search_prompt}],
-            timeout=REASON_TIMEOUT,
-        )
-    except Exception as e:
-        logging.error("ステップ① API呼び出しエラー: %s — %s", type(e).__name__, e)
-        raise
-
-    search_result = search_resp.choices[0].message.content if search_resp.choices else ""
-    logging.info("理由調査 ステップ①完了: %s (%d文字)", code, len(search_result))
-
-    if not search_result.strip():
-        search_result = "（検索結果なし）"
-
-    # ── ステップ② o3 で深く分析 ──
-    if job_id:
-        _update_job(job_id, step="step2")
-    logging.info("理由調査 ステップ②開始: %s (%s)", code, name)
-
-    analysis_prompt = (
-        f"以下は{name}（{code}）の本日{today}時点のニュース・開示情報です。\n\n"
-        f"{search_result}\n\n"
-        f"これを踏まえて以下を日本語で分析してください：\n\n"
+    prompt = (
+        f"{name}（証券コード:{code}）の株価が{today}に大きく動いた理由を徹底的に調査してください。\n\n"
+        f"以下を必ず検索してください：\n"
+        f"- 本日の適時開示・決算発表・業績修正\n"
+        f"- 引け後のニュース・プレスリリース\n"
+        f"- 提携・買収・新製品などの発表\n"
+        f"- アナリストレポート・格付け変更\n"
+        f"- 市場全体・セクターの動向\n\n"
+        f"調査結果を以下の形式で日本語で出力：\n\n"
         f"【変動の主な理由】\n"
         f"・本日出た材料か、何営業日前の材料かを明記すること\n"
         f"・各理由の先頭に【本日】【N営業日前】【N日前】【N週間前】【Nヶ月前】【1ヶ月以上前】【時期不明】のいずれかを必ず付けること\n"
         f"・明確な材料（決算・IR・ニュース等）がない場合は最初の行に「⚠️ 本日時点で明確な材料は確認できませんでした。」と書き、その後に考えられる背景要因を続けること\n"
-        f"・変動の主な理由の中で、最も株価への影響が大きいと判断される主因が明確にある場合は、その項目の先頭に「🎯 」をつけてください。主因が不明確な場合や複合的な場合はつけなくて構いません。主因は1つだけにしてください。\n\n"
+        f"・最も株価への影響が大きい主因が明確にある場合は、その項目の先頭に「🎯 」をつけてください。主因が不明確な場合や複合的な場合はつけなくて構いません。主因は1つだけにしてください。\n\n"
         f"【背景にある構造的な要因】\n"
         f"業界動向や中長期的な要因を記載\n\n"
         f"【今後の注目材料】\n"
-        f"今後の注目材料は、株価に最もインパクトを与えそうな重要なものを厳選して3つだけ箇条書きで挙げてください。\n"
-        f"網羅的に書くのではなく、最重要のものだけに絞ること。"
+        f"株価に最もインパクトを与えそうな重要なものを厳選して3つだけ箇条書きで挙げてください。"
     )
 
     try:
-        analysis_resp = client.chat.completions.create(
+        resp = client.chat.completions.create(
             model="o3",
-            messages=[{"role": "user", "content": analysis_prompt}],
-            timeout=REASON_TIMEOUT * 2,
+            reasoning_effort="high",
+            tools=[{"type": "web_search_preview"}],
+            messages=[{"role": "user", "content": prompt}],
+            timeout=REASON_TIMEOUT * 3,
         )
     except Exception as e:
-        logging.error("ステップ② API呼び出しエラー: %s — %s", type(e).__name__, e)
+        logging.error("理由調査 API呼び出しエラー: %s — %s", type(e).__name__, e)
         raise
 
-    result = analysis_resp.choices[0].message.content if analysis_resp.choices else "理由を特定できませんでした。"
-    logging.info("理由調査 ステップ②完了: %s (%d文字)", code, len(result))
+    result = resp.choices[0].message.content if resp.choices else "理由を特定できませんでした。"
+    logging.info("理由調査完了: %s (%d文字)", code, len(result))
     return result
 
 

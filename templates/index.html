@@ -2127,7 +2127,7 @@ async function investigateReason(btn, code, name) {
     return;
   }
 
-  body.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span><p id="rp-step" style="margin-top:12px;color:var(--muted)">① 情報収集中...</p></div>';
+  body.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span><p id="rp-step" style="margin-top:12px;color:var(--muted)">🔍 o3で徹底調査中...</p></div>';
   openReasonPanel(code, name);
 
   let myJobId;
@@ -2159,8 +2159,7 @@ async function investigateReason(btn, code, name) {
       if (d.step) {
         const stepEl = document.getElementById("rp-step");
         if (stepEl) {
-          if (d.step === "step1") stepEl.textContent = "① 情報収集中...";
-          else if (d.step === "step2") stepEl.textContent = "② o3で分析中...";
+          if (d.step === "searching") stepEl.textContent = "🔍 o3で徹底調査中...";
         }
       }
       if (d.status === "done") {
