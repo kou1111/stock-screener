@@ -307,6 +307,45 @@ header .badge-auto {
   gap: 4px;
 }
 
+.wl-tab-bar {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.wl-tab-bar::-webkit-scrollbar { display: none; }
+.wl-tab {
+  background: none;
+  border: none;
+  color: var(--faint);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.wl-tab:hover { color: var(--text); }
+.wl-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.wl-tab-add { font-size: 16px; padding: 8px 12px; font-weight: 300; }
+.wl-tab-add:hover { color: var(--accent); }
+.wl-tab-rename {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 2px 6px;
+  width: 80px;
+  outline: none;
+  font-family: inherit;
+}
+
 .watchlist-item {
   width: 350px;
   background: var(--bg);

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StockLens</title>
-  <link rel="stylesheet" href="/static/style.css?v=48">
+  <link rel="stylesheet" href="/static/style.css?v=49">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -37,6 +37,7 @@
       <input type="text" id="wl-search-input" class="wl-search-input" placeholder="銘柄コードまたは銘柄名で検索..." autocomplete="off">
       <div id="wl-search-candidates" class="wl-search-candidates" style="display:none;"></div>
     </div>
+    <div class="wl-tab-bar" id="wl-tab-bar"></div>
     <div id="watchlist-body" class="watchlist-body"></div>
   </div>
 
@@ -266,13 +267,16 @@ let tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
 let screenResults = new Map();  // key: "ticker:days" → result (重複排除)
 
 /* ── 注目銘柄 (watchlist) ────────────────────────── */
-const WATCHLIST_KEY = "stock_screener_watchlist";
+const WL_LISTS_KEY = "stock_screener_wl_lists";
 const MEMO_KEY = "stock_screener_memos";
-let watchlist = new Map();
+let wlLists = [];       // [{id, name, tickers: [{ticker,name,turnover,market_cap,spark,market}]}]
+let wlActiveIdx = 0;
+let wlNextId = 1;
+let watchlist = new Map(); // アクティブリストのビュー
 let watchlistMemos = {};
 
 const ALERT_KEY = "stock_screener_alerts";
-let alertSettings = {};  // {ticker: {upper: number|null, lower: number|null}}
+let alertSettings = {};
 let _alertTimer = null;
 
 function loadAlerts() {
@@ -282,21 +286,158 @@ function saveAlerts() {
   localStorage.setItem(ALERT_KEY, JSON.stringify(alertSettings));
 }
 
+function _syncActiveWatchlist() {
+  watchlist.clear();
+  const list = wlLists[wlActiveIdx];
+  if (!list) return;
+  for (const item of list.tickers) {
+    watchlist.set(item.ticker, {name: item.name, turnover: item.turnover, market_cap: item.market_cap, spark: item.spark, market: item.market});
+  }
+}
+
+function isInAnyList(ticker) {
+  return wlLists.some(list => list.tickers.some(t => t.ticker === ticker));
+}
+
 function loadWatchlist() {
+  // 新形式を試す
   try {
-    const saved = JSON.parse(localStorage.getItem(WATCHLIST_KEY));
-    if (Array.isArray(saved)) {
-      for (const item of saved) watchlist.set(item.ticker, {name: item.name, turnover: item.turnover || null, market_cap: item.market_cap || null, spark: item.spark || null, market: item.market || null});
+    const raw = JSON.parse(localStorage.getItem(WL_LISTS_KEY));
+    if (raw && raw.version === 2 && Array.isArray(raw.lists) && raw.lists.length > 0) {
+      wlLists = raw.lists;
+      wlActiveIdx = Math.min(raw.activeIdx || 0, wlLists.length - 1);
+      wlNextId = Math.max(...wlLists.map(l => l.id), 0) + 1;
+      _syncActiveWatchlist();
+      try { watchlistMemos = JSON.parse(localStorage.getItem(MEMO_KEY)) || {}; } catch { watchlistMemos = {}; }
+      renderWlTabs();
+      renderWatchlist();
+      return;
     }
   } catch {}
+  // 旧形式からマイグレーション
+  try {
+    const saved = JSON.parse(localStorage.getItem("stock_screener_watchlist"));
+    if (Array.isArray(saved) && saved.length > 0) {
+      wlLists = [{id: 1, name: "リスト1", tickers: saved.map(item => ({ticker: item.ticker, name: item.name, turnover: item.turnover || null, market_cap: item.market_cap || null, spark: item.spark || null, market: item.market || null}))}];
+      wlNextId = 2;
+      wlActiveIdx = 0;
+      _syncActiveWatchlist();
+      try { watchlistMemos = JSON.parse(localStorage.getItem(MEMO_KEY)) || {}; } catch { watchlistMemos = {}; }
+      saveWatchlist();
+      localStorage.removeItem("stock_screener_watchlist");
+      renderWlTabs();
+      renderWatchlist();
+      return;
+    }
+  } catch {}
+  // データなし
+  wlLists = [{id: 1, name: "リスト1", tickers: []}];
+  wlNextId = 2;
+  wlActiveIdx = 0;
+  _syncActiveWatchlist();
   try { watchlistMemos = JSON.parse(localStorage.getItem(MEMO_KEY)) || {}; } catch { watchlistMemos = {}; }
+  saveWatchlist();
+  renderWlTabs();
   renderWatchlist();
 }
 
 function saveWatchlist() {
-  const arr = [];
-  for (const [ticker, info] of watchlist) arr.push({ticker, name: info.name, turnover: info.turnover, market_cap: info.market_cap, spark: info.spark, market: info.market});
-  localStorage.setItem(WATCHLIST_KEY, JSON.stringify(arr));
+  const list = wlLists[wlActiveIdx];
+  if (list) {
+    list.tickers = [];
+    for (const [ticker, info] of watchlist) {
+      list.tickers.push({ticker, name: info.name, turnover: info.turnover, market_cap: info.market_cap, spark: info.spark, market: info.market});
+    }
+  }
+  localStorage.setItem(WL_LISTS_KEY, JSON.stringify({version: 2, activeIdx: wlActiveIdx, lists: wlLists}));
+}
+
+/* ── リストタブ ── */
+function renderWlTabs() {
+  const bar = document.getElementById("wl-tab-bar");
+  bar.innerHTML = "";
+  wlLists.forEach((list, idx) => {
+    const tab = document.createElement("button");
+    tab.className = "wl-tab" + (idx === wlActiveIdx ? " active" : "");
+    tab.textContent = list.name;
+    tab.addEventListener("click", () => switchWlList(idx));
+    tab.addEventListener("dblclick", (e) => { e.preventDefault(); e.stopPropagation(); _startTabRename(tab, idx); });
+    tab.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      if (wlLists.length <= 1) return;
+      if (confirm(`「${list.name}」を削除しますか？`)) deleteWlList(idx);
+    });
+    bar.appendChild(tab);
+  });
+  if (wlLists.length < 5) {
+    const addBtn = document.createElement("button");
+    addBtn.className = "wl-tab wl-tab-add";
+    addBtn.textContent = "+";
+    addBtn.title = "リストを追加";
+    addBtn.addEventListener("click", addWlList);
+    bar.appendChild(addBtn);
+  }
+}
+
+function switchWlList(idx) {
+  if (idx < 0 || idx >= wlLists.length || idx === wlActiveIdx) return;
+  saveWatchlist();
+  wlActiveIdx = idx;
+  _syncActiveWatchlist();
+  saveWatchlist();
+  renderWlTabs();
+  renderWatchlist();
+  updateStarButtons();
+}
+
+function addWlList() {
+  if (wlLists.length >= 5) return;
+  wlLists.push({id: wlNextId++, name: "リスト" + (wlLists.length + 1), tickers: []});
+  saveWatchlist();
+  wlActiveIdx = wlLists.length - 1;
+  _syncActiveWatchlist();
+  saveWatchlist();
+  renderWlTabs();
+  renderWatchlist();
+  updateStarButtons();
+}
+
+function deleteWlList(idx) {
+  if (wlLists.length <= 1) return;
+  wlLists.splice(idx, 1);
+  if (wlActiveIdx >= wlLists.length) wlActiveIdx = wlLists.length - 1;
+  else if (wlActiveIdx > idx) wlActiveIdx--;
+  else if (wlActiveIdx === idx) wlActiveIdx = Math.min(idx, wlLists.length - 1);
+  _syncActiveWatchlist();
+  saveWatchlist();
+  renderWlTabs();
+  renderWatchlist();
+  updateStarButtons();
+}
+
+function _startTabRename(tabEl, idx) {
+  const list = wlLists[idx];
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "wl-tab-rename";
+  input.value = list.name;
+  input.maxLength = 10;
+  tabEl.textContent = "";
+  tabEl.appendChild(input);
+  input.focus();
+  input.select();
+  const commit = () => {
+    const v = input.value.trim();
+    list.name = v || list.name;
+    saveWatchlist();
+    renderWlTabs();
+  };
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+    if (e.key === "Escape") { input.value = list.name; input.blur(); }
+  });
+  input.addEventListener("click", (e) => e.stopPropagation());
 }
 
 function saveMemo(ticker, text) {
@@ -682,13 +823,13 @@ function renderWatchlist() {
 
 function updateStarButtons() {
   document.querySelectorAll(".star-btn").forEach(btn => {
-    btn.classList.toggle("active", watchlist.has(btn.dataset.ticker));
+    btn.classList.toggle("active", isInAnyList(btn.dataset.ticker));
   });
 }
 
 /* ── アラート監視 ─────────────────────────────────── */
 async function _checkAlerts() {
-  const tickers = Object.keys(alertSettings).filter(t => watchlist.has(t));
+  const tickers = Object.keys(alertSettings).filter(t => isInAnyList(t));
   if (tickers.length === 0) return;
 
   for (const ticker of tickers) {
@@ -765,14 +906,14 @@ function _showDateAlertBanner(code, name, dateStr, memo) {
 
 function _restartAlertPolling() {
   if (_alertTimer) { clearInterval(_alertTimer); _alertTimer = null; }
-  const hasAny = Object.keys(alertSettings).some(t => watchlist.has(t));
+  const hasAny = Object.keys(alertSettings).some(t => isInAnyList(t));
   if (hasAny) {
     _alertTimer = setInterval(_checkAlerts, 30000);
   }
 }
 
 async function _checkAlertsOnLoad() {
-  const tickers = Object.keys(alertSettings).filter(t => watchlist.has(t));
+  const tickers = Object.keys(alertSettings).filter(t => isInAnyList(t));
   if (tickers.length === 0) return;
 
   const today = new Date();
@@ -1295,7 +1436,7 @@ function appendRow(r) {
 
   tabHits[days]++;
 
-  const isStarred = watchlist.has(r.ticker);
+  const isStarred = isInAnyList(r.ticker);
   const chgSign = r.cum_change >= 0 ? "+" : "";
   const tr = document.createElement("tr");
 
@@ -1458,7 +1599,7 @@ function appendPtsRow(s) {
   const sign = isUp ? "+" : "";
   const cls = isUp ? "up" : "down";
 
-  const isStarred = watchlist.has(ticker);
+  const isStarred = isInAnyList(ticker);
   const starTd = document.createElement("td");
   starTd.className = "star-cell";
   const starBtn = document.createElement("button");
@@ -1640,7 +1781,7 @@ function appendIntradayRow(s) {
   const sign = isUp ? "+" : "";
   const cls = isUp ? "up" : "down";
 
-  const isStarred = watchlist.has(ticker);
+  const isStarred = isInAnyList(ticker);
   const starTd = document.createElement("td");
   starTd.className = "star-cell";
   const starBtn = document.createElement("button");
