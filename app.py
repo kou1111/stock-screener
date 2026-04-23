@@ -801,7 +801,7 @@ def _run_intraday(job_id: str, threshold: float):
 
 # ── 変動理由調査 ─────────────────────────────────────
 def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
-    """2段階で銘柄の変動理由を調査: ①gpt-4o-search-previewで検索 → ②o4-miniで分析"""
+    """o4-mini + web_search_preview で銘柄の変動理由を調査（バックグラウンドスレッドで実行）"""
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY が設定されていません")
@@ -811,44 +811,19 @@ def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
 
     today = datetime.now().strftime("%Y年%m月%d日")
 
-    # ── ステップ① gpt-4o-search-preview で検索 ──
     if job_id:
-        _update_job(job_id, step="step1")
-    logging.info("理由調査 ステップ①開始: %s (%s)", code, name)
+        _update_job(job_id, step="searching")
+    logging.info("理由調査開始 (o4-mini+web_search): %s (%s)", code, name)
 
-    search_prompt = (
-        f"{name} {today} 適時開示 ニュース 発表 引け後\n\n"
-        f"上記キーワードで検索し、{name}（証券コード:{code}）に関する"
-        f"本日{today}の最新ニュース・適時開示・決算発表・業績修正・"
-        f"引け後の発表をできるだけ詳しく取得してください。"
-        f"検索結果のテキストをそのまま出力してください。"
-    )
-
-    try:
-        search_resp = client.chat.completions.create(
-            model="gpt-4o-search-preview",
-            messages=[{"role": "user", "content": search_prompt}],
-            timeout=30,
-        )
-    except Exception as e:
-        logging.error("ステップ① API呼び出しエラー: %s — %s", type(e).__name__, e)
-        raise
-
-    search_result = search_resp.choices[0].message.content if search_resp.choices else ""
-    logging.info("理由調査 ステップ①完了: %s (%d文字)", code, len(search_result))
-
-    if not search_result.strip():
-        search_result = "（検索結果なし）"
-
-    # ── ステップ② o4-mini で分析 ──
-    if job_id:
-        _update_job(job_id, step="step2")
-    logging.info("理由調査 ステップ②開始: %s (%s)", code, name)
-
-    analysis_prompt = (
-        f"以下は{name}（{code}）の本日{today}時点のニュース・開示情報です。\n\n"
-        f"{search_result}\n\n"
-        f"これを踏まえて以下を日本語で分析してください：\n\n"
+    prompt = (
+        f"{name}（証券コード:{code}）の株価が{today}に大きく動いた理由を徹底的に調査してください。\n\n"
+        f"以下を必ず検索してください：\n"
+        f"- 本日の適時開示・決算発表・業績修正\n"
+        f"- 引け後のニュース・プレスリリース\n"
+        f"- 提携・買収・新製品などの発表\n"
+        f"- アナリストレポート・格付け変更\n"
+        f"- 市場全体・セクターの動向\n\n"
+        f"調査結果を以下の形式で日本語で出力：\n\n"
         f"【変動の主な理由】\n"
         f"・本日出た材料か、何営業日前の材料かを明記すること\n"
         f"・各理由の先頭に【本日】【N営業日前】【N日前】【N週間前】【Nヶ月前】【1ヶ月以上前】【時期不明】のいずれかを必ず付けること\n"
@@ -861,18 +836,18 @@ def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
     )
 
     try:
-        analysis_resp = client.responses.create(
+        resp = client.responses.create(
             model="o4-mini",
-            reasoning={"effort": "medium"},
-            input=analysis_prompt,
-            timeout=60,
+            reasoning={"effort": "high"},
+            tools=[{"type": "web_search_preview"}],
+            input=prompt,
         )
     except Exception as e:
-        logging.error("ステップ② API呼び出しエラー: %s — %s", type(e).__name__, e)
+        logging.error("理由調査 API呼び出しエラー: %s — %s", type(e).__name__, e)
         raise
 
-    result = analysis_resp.output_text if analysis_resp.output_text else "理由を特定できませんでした。"
-    logging.info("理由調査 ステップ②完了: %s (%d文字)", code, len(result))
+    result = resp.output_text if resp.output_text else "理由を特定できませんでした。"
+    logging.info("理由調査完了: %s (%d文字)", code, len(result))
     return result
 
 
