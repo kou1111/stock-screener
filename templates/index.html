@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stock Screener</title>
-  <link rel="stylesheet" href="/static/style.css?v=35">
+  <title>StockLens</title>
+  <link rel="stylesheet" href="/static/style.css?v=36">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HJQXL95L5F"></script>
@@ -21,16 +21,20 @@
 
   <!-- ヘッダー -->
   <header>
-    <h1>Stock Screener</h1>
+    <h1>StockLens</h1>
     <span class="badge">JP</span>
     <span class="badge badge-auto">JPX自動取得</span>
   </header>
 
   <!-- 注目銘柄 -->
-  <div class="card" id="watchlist-card" style="display:none;">
+  <div class="card" id="watchlist-card">
     <div class="card-title-row">
       <div class="card-title" style="margin-bottom:0;">注目銘柄 <span class="hit-count" id="watchlist-count"></span></div>
       <button class="btn-clear" onclick="clearWatchlist()">すべて解除</button>
+    </div>
+    <div class="wl-search-wrap">
+      <input type="text" id="wl-search-input" class="wl-search-input" placeholder="銘柄コードまたは銘柄名で検索..." autocomplete="off">
+      <div id="wl-search-candidates" class="wl-search-candidates" style="display:none;"></div>
     </div>
     <div id="watchlist-body" class="watchlist-body"></div>
   </div>
@@ -323,11 +327,11 @@ function renderWatchlist() {
   const count = document.getElementById("watchlist-count");
 
   if (watchlist.size === 0) {
-    card.style.display = "none";
+    count.textContent = "";
+    body.innerHTML = "";
     return;
   }
 
-  card.style.display = "block";
   count.textContent = `${watchlist.size} 銘柄`;
   body.innerHTML = "";
 
@@ -428,6 +432,71 @@ function renderWatchlist() {
 function updateStarButtons() {
   document.querySelectorAll(".star-btn").forEach(btn => {
     btn.classList.toggle("active", watchlist.has(btn.dataset.ticker));
+  });
+}
+
+/* ── 銘柄検索 ─────────────────────────────────────── */
+{
+  const searchInput = document.getElementById("wl-search-input");
+  const candBox = document.getElementById("wl-search-candidates");
+  let _wlSearchTimer = null;
+
+  searchInput.addEventListener("input", () => {
+    clearTimeout(_wlSearchTimer);
+    const q = searchInput.value.trim();
+    if (!q) { candBox.style.display = "none"; return; }
+    _wlSearchTimer = setTimeout(() => _wlDoSearch(q), 300);
+  });
+
+  async function _wlDoSearch(q) {
+    try {
+      const res = await fetch(`/api/search_ticker?q=${encodeURIComponent(q)}`);
+      const d = await res.json();
+      if (!d.ok) { candBox.style.display = "none"; return; }
+      if (d.results.length === 0) {
+        candBox.innerHTML = '<div class="wl-cand-empty">該当する銘柄が見つかりません</div>';
+        candBox.style.display = "block";
+        return;
+      }
+      let html = "";
+      for (const r of d.results) {
+        const ticker = r.code + ".T";
+        const already = watchlist.has(ticker);
+        const btnCls = already ? "wl-cand-add added" : "wl-cand-add";
+        const btnText = already ? "追加済み" : "追加";
+        html += `<div class="wl-cand-item" data-code="${r.code}" data-name="${r.name.replace(/"/g, '&quot;')}" data-market="${r.market}">` +
+          `${marketBadge(r.market)}` +
+          `<span class="wl-cand-code">${r.code}</span>` +
+          `<span class="wl-cand-name">${r.name}</span>` +
+          `<button class="${btnCls}"${already ? " disabled" : ""}>${btnText}</button>` +
+          `</div>`;
+      }
+      candBox.innerHTML = html;
+      candBox.style.display = "block";
+
+      candBox.querySelectorAll(".wl-cand-item").forEach(item => {
+        const addBtn = item.querySelector(".wl-cand-add");
+        if (addBtn.classList.contains("added")) return;
+        addBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const code = item.dataset.code;
+          const name = item.dataset.name;
+          const market = item.dataset.market;
+          const ticker = code + ".T";
+          if (!watchlist.has(ticker)) {
+            toggleWatchlist(ticker, name, null, null, null, market);
+          }
+          searchInput.value = "";
+          candBox.style.display = "none";
+        });
+      });
+    } catch {}
+  }
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".wl-search-wrap")) {
+      candBox.style.display = "none";
+    }
   });
 }
 

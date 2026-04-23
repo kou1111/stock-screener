@@ -1014,6 +1014,40 @@ def api_intraday_poll(job_id):
         return jsonify({"ok": False, "error": str(e)})
 
 
+@app.route("/api/search_ticker")
+def api_search_ticker():
+    """銘柄コードまたは銘柄名で検索"""
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"ok": True, "results": []})
+
+    # JPX銘柄名がまだ読み込まれていなければ先にロード
+    if not _jpx_names:
+        try:
+            fetch_jpx_tickers()
+        except Exception:
+            pass
+
+    results = []
+    is_num = q.isdigit()
+    q_lower = q.lower()
+
+    for ticker, name in _jpx_names.items():
+        code = ticker.replace(".T", "")
+        if is_num:
+            if not code.startswith(q):
+                continue
+        else:
+            if q_lower not in name.lower() and q_lower not in code.lower():
+                continue
+        market = _jpx_markets.get(ticker, "")
+        results.append({"code": code, "name": name, "market": market})
+        if len(results) >= 10:
+            break
+
+    return jsonify({"ok": True, "results": results})
+
+
 @app.route("/api/spark/<ticker>")
 def api_spark(ticker):
     """注目銘柄用: 1銘柄のスパークラインOHLCを返す"""

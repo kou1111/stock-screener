@@ -1,4 +1,4 @@
-# Stock Screener - 日本株スクリーニング Web アプリ
+# StockLens - 日本株スクリーニング Web アプリ
 
 Flask + yfinance + Plotly で構築した日本株スクリーニングツールです。
 

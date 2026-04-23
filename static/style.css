@@ -400,6 +400,85 @@ header .badge-auto {
   border-color: var(--accent);
 }
 
+/* ── 銘柄検索 ─────────────────────────────────── */
+.wl-search-wrap { position: relative; margin-bottom: 12px; }
+.wl-search-input {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.wl-search-input::placeholder { color: var(--faint); }
+.wl-search-input:focus { border-color: var(--accent); }
+.wl-search-candidates {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-top: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.wl-cand-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+.wl-cand-item:hover { background: rgba(255, 255, 255, 0.06); }
+.wl-cand-item + .wl-cand-item { border-top: 1px solid var(--border); }
+.wl-cand-code {
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 48px;
+}
+.wl-cand-name {
+  flex: 1;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wl-cand-add {
+  background: rgba(10, 132, 255, 0.1);
+  border: none;
+  border-radius: 6px;
+  color: var(--accent);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+.wl-cand-add:hover { background: rgba(10, 132, 255, 0.2); }
+.wl-cand-add.added {
+  color: var(--faint);
+  background: transparent;
+  cursor: default;
+}
+.wl-cand-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--faint);
+  font-size: 13px;
+}
+
 /* ── ★ボタン ──────────────────────────────────── */
 .star-cell {
   width: 32px;
