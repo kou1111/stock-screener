@@ -837,8 +837,8 @@ def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
 
     try:
         resp = client.responses.create(
-            model="o3",
-            reasoning={"effort": "medium"},
+            model="o4-mini",
+            reasoning={"effort": "high"},
             tools=[{"type": "web_search_preview"}],
             input=prompt,
             timeout=120,
