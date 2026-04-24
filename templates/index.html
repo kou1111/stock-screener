@@ -2198,6 +2198,8 @@ async function investigateReason(btn, code, name) {
     return;
   }
 
+  let _retryCountdownId = null;
+  let _retryCurrentAttempt = 0;
   while (_reasonJobId === myJobId) {
     await new Promise(r => setTimeout(r, 2000));
     if (_reasonJobId !== myJobId) break;
@@ -2207,6 +2209,41 @@ async function investigateReason(btn, code, name) {
       const d = await pollRes.json();
       if (!d.ok) { throw new Error(d.error); }
       if (_reasonJobId !== myJobId) break;
+
+      if (d.status === "retrying") {
+        const attempt = d.retry_attempt || 2;
+        // 新しいリトライ回数ならカウントダウンをリセット
+        if (_retryCountdownId && _retryCurrentAttempt !== attempt) {
+          clearInterval(_retryCountdownId); _retryCountdownId = null;
+        }
+        _retryCurrentAttempt = attempt;
+        // カウントダウン表示（まだ動いていなければ開始）
+        if (!_retryCountdownId) {
+          const retryUntil = d.retry_until * 1000; // epoch ms
+          const attempt = d.retry_attempt || 2;
+          body.innerHTML = '<div style="text-align:center;padding:40px">'
+            + '<span class="spinner"></span>'
+            + '<p id="rp-step" style="margin-top:12px;color:var(--muted)"></p></div>';
+          const updateCd = () => {
+            const sec = Math.max(0, Math.ceil((retryUntil - Date.now()) / 1000));
+            const stepEl = document.getElementById("rp-step");
+            if (!stepEl) return;
+            if (sec > 0) {
+              stepEl.textContent = `⏳ ${sec}秒後に自動で再試行します...（${attempt}/3回目）`;
+            } else {
+              stepEl.textContent = "🔍 o3で再調査中...";
+              if (_retryCountdownId) { clearInterval(_retryCountdownId); _retryCountdownId = null; }
+            }
+          };
+          updateCd();
+          _retryCountdownId = setInterval(updateCd, 1000);
+        }
+        continue;
+      }
+
+      // retrying以外のステータスになったらカウントダウンを停止
+      if (_retryCountdownId) { clearInterval(_retryCountdownId); _retryCountdownId = null; }
+
       if (d.step) {
         const stepEl = document.getElementById("rp-step");
         if (stepEl) {
@@ -2223,11 +2260,13 @@ async function investigateReason(btn, code, name) {
         break;
       }
     } catch (e) {
+      if (_retryCountdownId) { clearInterval(_retryCountdownId); _retryCountdownId = null; }
       if (_reasonJobId !== myJobId) break;
       body.innerHTML = `<div class="rc-fallback" style="color:var(--red)">${_translateError(e.message)}</div>`;
       break;
     }
   }
+  if (_retryCountdownId) { clearInterval(_retryCountdownId); _retryCountdownId = null; }
 }
 
 // ページ読み込み時に履歴を復元

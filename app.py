@@ -13,6 +13,7 @@ import os
 import re
 import tempfile
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
@@ -1098,13 +1099,39 @@ def api_reason_start(code):
         job_id = _new_job()
 
         def _run():
-            try:
-                reason = investigate_reason(code, name, job_id=job_id)
-                _update_job(job_id, status="done", message=reason)
-            except Exception as e:
-                logging.exception("理由調査エラー: %s", code)
-                _update_job(job_id, status="error",
-                            message=_translate_api_error(e))
+            retry_delays = [30, 60]  # 2回目: 30秒後, 3回目: 60秒後
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                try:
+                    reason = investigate_reason(code, name, job_id=job_id)
+                    _update_job(job_id, status="done", message=reason)
+                    return
+                except Exception as e:
+                    logging.exception("理由調査エラー (attempt %d/%d): %s",
+                                      attempt + 1, max_attempts, code)
+                    err_msg = str(e).lower()
+                    is_rate_limit = ("rate limit" in err_msg
+                                     or "rate_limit" in err_msg)
+                    if is_rate_limit and attempt < max_attempts - 1:
+                        wait_sec = retry_delays[attempt]
+                        retry_until = time.time() + wait_sec
+                        _update_job(job_id, status="retrying",
+                                    step=f"retry",
+                                    retry_attempt=attempt + 2,
+                                    retry_wait=wait_sec,
+                                    retry_until=retry_until)
+                        logging.info("レート制限 → %d秒後にリトライ (%d/%d): %s",
+                                     wait_sec, attempt + 2, max_attempts, code)
+                        time.sleep(wait_sec)
+                        _update_job(job_id, step="searching")
+                        continue
+                    if is_rate_limit:
+                        _update_job(job_id, status="error",
+                                    message="レート制限が続いています。しばらく時間をおいてから再試行してください。")
+                    else:
+                        _update_job(job_id, status="error",
+                                    message=_translate_api_error(e))
+                    return
 
         _reason_pool.submit(_run)
         return jsonify({"ok": True, "job_id": job_id})
@@ -1125,6 +1152,8 @@ def api_reason_poll(job_id):
             "status": job["status"],
             "message": job.get("message", ""),
             "step": job.get("step", ""),
+            "retry_attempt": job.get("retry_attempt", 0),
+            "retry_until": job.get("retry_until", 0),
         })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
