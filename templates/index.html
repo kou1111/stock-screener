@@ -2178,7 +2178,7 @@ async function investigateReason(btn, code, name) {
     return;
   }
 
-  body.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span><p id="rp-step" style="margin-top:12px;color:var(--muted)">🔍 o3で徹底調査中...</p></div>';
+  body.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span><p id="rp-step" style="margin-top:12px;color:var(--muted)">🔍 AIで徹底調査中...</p></div>';
   openReasonPanel(code, name);
 
   let myJobId;
@@ -2231,7 +2231,7 @@ async function investigateReason(btn, code, name) {
             if (sec > 0) {
               stepEl.textContent = `⏳ ${sec}秒後に自動で再試行します...（${attempt}/3回目）`;
             } else {
-              stepEl.textContent = "🔍 o3で再調査中...";
+              stepEl.textContent = "🔍 AIで再調査中...";
               if (_retryCountdownId) { clearInterval(_retryCountdownId); _retryCountdownId = null; }
             }
           };
@@ -2247,7 +2247,7 @@ async function investigateReason(btn, code, name) {
       if (d.step) {
         const stepEl = document.getElementById("rp-step");
         if (stepEl) {
-          if (d.step === "searching") stepEl.textContent = "🔍 o3で徹底調査中...";
+          if (d.step === "searching") stepEl.textContent = "🔍 AIで徹底調査中...";
         }
       }
       if (d.status === "done") {
