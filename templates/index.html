@@ -1966,6 +1966,10 @@ function appendIntradayRow(s) {
 
 /* ── 理由調査結果のフォーマット ────��──────────────── */
 function formatReasonHtml(text) {
+  // URLを除去: [label](url) → label, 裸のURL → 削除
+  text = text.replace(/\[([^\]]*)\]\([^)]+\)/g, "$1");
+  text = text.replace(/https?:\/\/[^\s)\]]+/g, "");
+
   const sections = [
     {key: "変動の主な理由", icon: "&#x1F50D;", cls: "rc-reason"},
     {key: "上昇の主な理由", icon: "&#x1F50D;", cls: "rc-reason"},
@@ -1977,17 +1981,14 @@ function formatReasonHtml(text) {
     {key: "注目材料", icon: "&#x1F4C5;", cls: "rc-outlook"},
   ];
 
-  // テキストを【見出し】で分割
   const parsed = [];
   const used = new Set();
   for (const sec of sections) {
     const re = new RegExp("[【\\[]\\s*" + sec.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*[】\\]]", "i");
     const idx = text.search(re);
     if (idx === -1) continue;
-    // 同じ cls は1つだけ
     if (used.has(sec.cls)) continue;
     used.add(sec.cls);
-    // 次のセクション開始位置を探す
     const afterHeading = text.indexOf("\n", idx);
     if (afterHeading === -1) continue;
     let endIdx = text.length;
@@ -2005,50 +2006,45 @@ function formatReasonHtml(text) {
     return `<div class="rc-fallback">${escaped}</div>`;
   }
 
-  function bodyToHtml(body, cls) {
-    function addDateBadge(html) {
-      return html.replace(/【(本日|時期不明|\d+営業日前|\d+日前|\d+週間前|\d+ヶ月前|\d+ヶ月以上前)】/g,
-        '<span class="rc-date-badge">$1</span>');
-    }
-    function highlightDates(html) {
-      const patterns = [
-        /(\d{4}年\d{1,2}月\d{1,2}日)/g,
-        /(\d{4}年\d{1,2}月)/g,
-        /(\d{1,2}月\d{1,2}日)/g,
-        /(\d{1,2}月(?:中|上旬|下旬|末))/g,
-        /(\d+ヶ月間?|\d+年間|\d+週間|\d+営業日|\d+日間)/g,
-        /(第[1-4１-４一二三四]四半期|通期|中間期|上半期|下半期|半期)/g,
-        /(今期|来期|前期|今月|来月|先月|今週|来週|先週|翌日|翌月|翌週|翌年|前日|前月|前週|昨年|本日|当日)/g,
-        /(期限|締め切り|締切)/g,
-        /([^\d]\d{1,2}月(?=[^日\d]))/g,
-      ];
-      for (const re of patterns) {
-        html = html.replace(re, (m, p1) => {
-          if (m.includes('rc-date-hl')) return m;
-          return m.replace(p1, `<span class="rc-date-hl">${p1}</span>`);
-        });
+  function coloredDateBadge(html) {
+    return html.replace(/【(本日|時期不明|\d+営業日前|\d+日前|\d+週間前|\d+ヶ月前|\d+ヶ月以上前)】/g, (_, tag) => {
+      let cls = "rc-badge-gray";
+      if (tag === "本日") cls = "rc-badge-red";
+      else if (tag === "時期不明") cls = "rc-badge-gray";
+      else {
+        const n = parseInt(tag);
+        if (!isNaN(n) && n <= 3) cls = "rc-badge-yellow";
+        else cls = "rc-badge-gray";
       }
-      return html;
-    }
-    const useHighlight = cls !== "rc-reason";
-    const hl = useHighlight ? highlightDates : (x) => x;
+      return `<span class="rc-date-badge ${cls}">${tag}</span>`;
+    });
+  }
+
+  function bodyToHtml(body) {
     return body.split("\n").map(line => {
       line = line.trim();
       if (!line) return "";
       const escaped = line.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-      if (/⚠️.*明確な材料.*確認できませんでした/.test(line)) {
-        return `<p class="rc-no-material">${escaped}</p>`;
+      if (/⚠️/.test(line) && /材料/.test(line)) {
+        return `<p class="rc-no-material">${coloredDateBadge(escaped)}</p>`;
       }
+      const isMain = /🎯/.test(line);
       if (/^[・\-\*•]/.test(line)) {
-        return `<li><span>${hl(addDateBadge(escaped.replace(/^[・\-\*•]\s*/, "")))}</span></li>`;
+        const content = coloredDateBadge(escaped.replace(/^[・\-\*•]\s*/, ""));
+        return isMain
+          ? `<li class="rc-main-factor"><span>${content}</span></li>`
+          : `<li><span>${content}</span></li>`;
       }
-      return `<p>${hl(addDateBadge(escaped))}</p>`;
+      const content = coloredDateBadge(escaped);
+      return isMain
+        ? `<p class="rc-main-factor">${content}</p>`
+        : `<p>${content}</p>`;
     }).join("");
   }
 
   let html = "";
   for (const s of parsed) {
-    const inner = bodyToHtml(s.body, s.cls);
+    const inner = bodyToHtml(s.body);
     const hasList = inner.includes("<li>");
     const wrap = hasList ? `<ul>${inner}</ul>` : inner;
     html += `<div class="rc-card ${s.cls}"><div class="rc-head"><span class="rc-icon">${s.icon}</span><span class="rc-title">${s.key}</span></div><div class="rc-body">${wrap}</div></div>`;
