@@ -802,7 +802,7 @@ def _run_intraday(job_id: str, threshold: float):
 
 # ── 変動理由調査 ─────────────────────────────────────
 def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
-    """gpt-5.4 + web_search_preview で銘柄の変動理由を調査"""
+    """gpt-4o-search-preview で銘柄の変動理由を調査"""
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY が設定されていません")
@@ -814,7 +814,7 @@ def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
 
     if job_id:
         _update_job(job_id, step="searching")
-    logging.info("理由調査開始 (gpt-5.4+web_search): %s (%s)", code, name)
+    logging.info("理由調査開始 (gpt-4o-search-preview): %s (%s)", code, name)
 
     prompt = (
         f"あなたは株式アナリストです。\n"
@@ -837,32 +837,20 @@ def investigate_reason(code: str, name: str, job_id: str | None = None) -> str:
         f"3. 今後の注目材料（最重要3つのみ）"
     )
 
-    messages = [{"role": "user", "content": prompt}]
-    tools = [{"type": "web_search_preview"}]
-
-    # gpt-5.4 を試行し、失敗時は gpt-4o-search-preview にフォールバック
     try:
         response = client.chat.completions.create(
-            model="gpt-5.4",
-            tools=tools,
-            messages=messages,
-            timeout=55,
-        )
-        model_used = "gpt-5.4"
-    except Exception as e:
-        logging.error("gpt-5.4 使用不可 — フォールバック: %s — %s", type(e).__name__, e)
-        response = client.chat.completions.create(
             model="gpt-4o-search-preview",
-            tools=tools,
-            messages=messages,
+            messages=[{"role": "user", "content": prompt}],
             timeout=55,
         )
-        model_used = "gpt-4o-search-preview"
+    except Exception as e:
+        logging.error("理由調査 API呼び出しエラー: %s — %s", type(e).__name__, e)
+        raise
 
     result = (response.choices[0].message.content or "").strip() if response.choices else ""
     if not result:
         result = "理由を特定できませんでした。"
-    logging.info("理由調査完了 (%s): %s (%d文字)", model_used, code, len(result))
+    logging.info("理由調査完了: %s (%d文字)", code, len(result))
     return result
 
 
