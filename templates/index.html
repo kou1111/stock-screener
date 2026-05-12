@@ -109,7 +109,8 @@
             <th style="width:100px"></th>
           </tr>
         </thead>
-        <tbody id="intraday-tbody"></tbody>
+        <tbody id="intraday-tbody-up"></tbody>
+        <tbody id="intraday-tbody-down"></tbody>
       </table>
     </div>
   </div>
@@ -205,11 +206,16 @@
           <th style="width:80px;text-align:right">時価総額</th>
           <th style="width:100px"></th>
         </tr></thead>
-        <tbody id="result-tbody-1"></tbody>
-        <tbody id="result-tbody-2" class="hidden-tab"></tbody>
-        <tbody id="result-tbody-3" class="hidden-tab"></tbody>
-        <tbody id="result-tbody-4" class="hidden-tab"></tbody>
-        <tbody id="result-tbody-5" class="hidden-tab"></tbody>
+        <tbody id="result-tbody-1-up"></tbody>
+        <tbody id="result-tbody-1-down"></tbody>
+        <tbody id="result-tbody-2-up" class="hidden-tab"></tbody>
+        <tbody id="result-tbody-2-down" class="hidden-tab"></tbody>
+        <tbody id="result-tbody-3-up" class="hidden-tab"></tbody>
+        <tbody id="result-tbody-3-down" class="hidden-tab"></tbody>
+        <tbody id="result-tbody-4-up" class="hidden-tab"></tbody>
+        <tbody id="result-tbody-4-down" class="hidden-tab"></tbody>
+        <tbody id="result-tbody-5-up" class="hidden-tab"></tbody>
+        <tbody id="result-tbody-5-down" class="hidden-tab"></tbody>
       </table>
     </div>
   </div>
@@ -1278,7 +1284,8 @@ function switchTab(days) {
   activeTab = days;
   for (let d = 1; d <= 5; d++) {
     const isThis = d === days;
-    document.getElementById(`result-tbody-${d}`).classList.toggle("hidden-tab", !isThis);
+    document.getElementById(`result-tbody-${d}-up`).classList.toggle("hidden-tab", !isThis);
+    document.getElementById(`result-tbody-${d}-down`).classList.toggle("hidden-tab", !isThis);
     document.querySelector(`.tab[data-days="${d}"]`).classList.toggle("active", isThis);
   }
   document.getElementById("ref-close-th").textContent = `${days}日前終値`;
@@ -1297,7 +1304,8 @@ function updateTabCounts() {
 
 function resetResults() {
   for (let d = 1; d <= 5; d++) {
-    document.getElementById(`result-tbody-${d}`).innerHTML = "";
+    document.getElementById(`result-tbody-${d}-up`).innerHTML = "";
+    document.getElementById(`result-tbody-${d}-down`).innerHTML = "";
   }
   tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
   screenResults = new Map();
@@ -1537,8 +1545,9 @@ async function pollProgress(jobId) {
       resultCard.style.display = "block";
       for (const day of enabledDays) {
         if (tabHits[day] === 0) {
-          document.getElementById(`result-tbody-${day}`).innerHTML =
+          document.getElementById(`result-tbody-${day}-up`).innerHTML =
             '<tr><td colspan="11" class="empty-state">条件に該当する銘柄はありませんでした</td></tr>';
+          document.getElementById(`result-tbody-${day}-down`).innerHTML = "";
         }
       }
     } else if (d.status === "lost") {
@@ -1572,12 +1581,37 @@ async function pollProgress(jobId) {
 
 /* ── ソート済み再描画 ──────────────────────────────── */
 function _resortScreenResults() {
-  const sorted = [...screenResults.values()].sort((a, b) => Math.abs(b.cum_change) - Math.abs(a.cum_change));
+  const all = [...screenResults.values()];
+  const ups = all.filter(r => r.cum_change > 0).sort((a, b) => Math.abs(b.cum_change) - Math.abs(a.cum_change));
+  const downs = all.filter(r => r.cum_change <= 0).sort((a, b) => Math.abs(b.cum_change) - Math.abs(a.cum_change));
+
   for (const day of enabledDays) {
-    document.getElementById(`result-tbody-${day}`).innerHTML = "";
+    document.getElementById(`result-tbody-${day}-up`).innerHTML = "";
+    document.getElementById(`result-tbody-${day}-down`).innerHTML = "";
   }
   tabHits = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-  for (const r of sorted) appendRow(r);
+
+  // 日ごとの件数を集計
+  const dayUps = {1:0,2:0,3:0,4:0,5:0};
+  const dayDowns = {1:0,2:0,3:0,4:0,5:0};
+  for (const r of ups) dayUps[r.days]++;
+  for (const r of downs) dayDowns[r.days]++;
+
+  // セクションヘッダーを挿入
+  for (const day of enabledDays) {
+    const tbodyUp = document.getElementById(`result-tbody-${day}-up`);
+    const upHeader = document.createElement("tr");
+    upHeader.innerHTML = `<td colspan="11" class="split-section-header section-up">\u{1F4C8} 上昇 ${dayUps[day]}件</td>`;
+    tbodyUp.appendChild(upHeader);
+
+    const tbodyDown = document.getElementById(`result-tbody-${day}-down`);
+    const downHeader = document.createElement("tr");
+    downHeader.innerHTML = `<td colspan="11" class="split-section-header section-down">\u{1F4C9} 下落 ${dayDowns[day]}件</td>`;
+    tbodyDown.appendChild(downHeader);
+  }
+
+  for (const r of ups) appendRow(r);
+  for (const r of downs) appendRow(r);
   updateTabCounts();
   resultCard.style.display = "block";
 }
@@ -1585,7 +1619,8 @@ function _resortScreenResults() {
 /* ── 結果行の追加 ─────────────────────────────────── */
 function appendRow(r) {
   const days = r.days;
-  const tbody = document.getElementById(`result-tbody-${days}`);
+  const suffix = r.cum_change > 0 ? "up" : "down";
+  const tbody = document.getElementById(`result-tbody-${days}-${suffix}`);
   if (!tbody) return;
 
   tabHits[days]++;
@@ -1611,7 +1646,7 @@ function appendRow(r) {
     <td class="spark-cell"></td>
     <td class="price">${r.ref_close.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
     <td class="price">${r.price.toLocaleString("ja-JP", {maximumFractionDigits:1})}</td>
-    <td class="change down">${chgSign}${r.cum_change.toFixed(1)}%</td>
+    <td class="change ${r.cum_change > 0 ? 'up' : 'down'}">${chgSign}${r.cum_change.toFixed(1)}%</td>
     <td class="price">${r.max_wick.toFixed(1)}%</td>
     <td class="price">${r.turnover != null ? r.turnover.toLocaleString("ja-JP") + "億" : "-"}</td>
     <td class="price">${formatMarketCap(r.market_cap)}</td>
@@ -1813,7 +1848,6 @@ async function fetchIntraday() {
   const progFill = document.getElementById("intraday-progress-fill");
   const progText = document.getElementById("intraday-progress-text");
   const result = document.getElementById("intraday-result");
-  const tbody = document.getElementById("intraday-tbody");
   const threshold = parseFloat(intradayThresholdInput.value) || 3;
   localStorage.setItem(INTRADAY_THRESHOLD_KEY, intradayThresholdInput.value);
 
@@ -1824,7 +1858,8 @@ async function fetchIntraday() {
   progFill.style.width = "0%";
   progText.textContent = "準備中...";
   result.style.display = "none";
-  tbody.innerHTML = "";
+  document.getElementById("intraday-tbody-up").innerHTML = "";
+  document.getElementById("intraday-tbody-down").innerHTML = "";
   intradayResults = new Map();
 
   try {
@@ -1920,15 +1955,32 @@ async function pollIntraday(jobId) {
 }
 
 function _resortIntradayResults() {
-  const sorted = [...intradayResults.values()].sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
-  const tbody = document.getElementById("intraday-tbody");
-  tbody.innerHTML = "";
-  for (const s of sorted) appendIntradayRow(s);
+  const all = [...intradayResults.values()];
+  const ups = all.filter(s => s.change_pct > 0).sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  const downs = all.filter(s => s.change_pct <= 0).sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+
+  const tbodyUp = document.getElementById("intraday-tbody-up");
+  const tbodyDown = document.getElementById("intraday-tbody-down");
+  tbodyUp.innerHTML = "";
+  tbodyDown.innerHTML = "";
+
+  // 上昇セクション
+  const upHeader = document.createElement("tr");
+  upHeader.innerHTML = `<td colspan="11" class="split-section-header section-up">\u{1F4C8} 上昇 ${ups.length}件</td>`;
+  tbodyUp.appendChild(upHeader);
+  for (const s of ups) appendIntradayRow(s, tbodyUp);
+
+  // 下落セクション
+  const downHeader = document.createElement("tr");
+  downHeader.innerHTML = `<td colspan="11" class="split-section-header section-down">\u{1F4C9} 下落 ${downs.length}件</td>`;
+  tbodyDown.appendChild(downHeader);
+  for (const s of downs) appendIntradayRow(s, tbodyDown);
+
   document.getElementById("intraday-result").style.display = "block";
 }
 
-function appendIntradayRow(s) {
-  const tbody = document.getElementById("intraday-tbody");
+function appendIntradayRow(s, tbody) {
+  if (!tbody) tbody = document.getElementById("intraday-tbody-up");
   const tr = document.createElement("tr");
   const ticker = s.code + ".T";
   const isUp = s.change_pct > 0;

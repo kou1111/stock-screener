@@ -881,6 +881,23 @@ header .badge-auto {
 .change.up   { color: var(--red); }
 .change.down { color: var(--accent); }
 
+/* ── 上昇/下落セクションヘッダー ─────────────── */
+.split-section-header {
+  padding: 8px 12px !important;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+}
+.split-section-header.section-up {
+  color: var(--red);
+  background: rgba(255, 68, 68, 0.08);
+}
+.split-section-header.section-down {
+  color: var(--accent);
+  background: rgba(88, 166, 255, 0.08);
+}
+
 .th-name,
 .name-cell {
   width: 150px;
